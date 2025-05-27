@@ -1,0 +1,254 @@
+/*
+GLOBAL:
+ctlFlags: object containing command-number pairs.
+
+REQUIREMENTS:
+INCLUDE:
+keyCodes.js
+
+HTML:
+id: controllerConnected, controllerDisconnected, controllers, commands e.g. moveUp, lookUp
+class: 'binding' with commands as id (see displayBindings command)
+
+ * Contains modified Gamepad API Test c/o
+ * Ted Mielczarek <ted@mielczarek.org> 2013
+ */
+
+var ctlFlags = {
+lookUp: 0,
+lookDown: 0,
+lookLeft: 0,
+lookRight: 0,
+twistLeft: 0,
+twistRight: 0,
+moveForward: 0,
+moveBackward: 0,
+moveUp: 0,
+moveDown: 0,
+moveLeft: 0,
+moveRight: 0
+};
+
+var listening = undefined;
+const defaultKeyboardBindings = {
+lookUp: 'k98',
+lookDown: 'k104',
+lookLeft: 'k100',
+lookRight: 'k102',
+twistLeft: 'k103',
+twistRight: 'k105',
+moveForward: 'k87',
+moveBackward: 'k83',
+moveUp: 'k32',
+moveDown: 'k17',
+moveLeft: 'k65',
+moveRight: 'k68'
+};
+
+const defaultGamepadBindings = {
+lookUp: 'a3',
+lookDown: 'k104',
+lookLeft: 'k100',
+lookRight: 'a2',
+twistLeft: 'b4',
+twistRight: 'b5',
+moveForward: 'k87',
+moveBackward: 'a1',
+moveUp: 'b6',
+moveDown: 'b7',
+moveLeft: 'k65',
+moveRight: 'a0'
+};
+
+/*Initialise bindings*/
+var ctlBindings = cloneObject(defaultKeyboardBindings);
+ 
+var haveEvents = 'GamepadEvent' in window;
+var controllers = {};
+var rAF = window.mozRequestAnimationFrame ||
+  window.webkitRequestAnimationFrame ||
+  window.requestAnimationFrame;
+
+function connecthandler(e) {
+  addgamepad(e.gamepad);
+}
+function addgamepad(gamepad) {
+  controllers[gamepad.index] = gamepad; var d = document.createElement("div");
+  d.setAttribute("id", "controller" + gamepad.index);
+  var t = document.createElement("span");
+  t.appendChild(document.createTextNode("gamepad: " + gamepad.id));
+  d.appendChild(t);
+  var b = document.createElement("div");
+  b.className = "buttons";
+  for (var i=0; i<gamepad.buttons.length; i++) {
+    var e = document.createElement("span");
+    e.className = "button";
+    //e.id = "b" + i;
+    e.innerHTML = "b" + i;
+    b.appendChild(e);
+  }
+  d.appendChild(b);
+  var a = document.createElement("div");
+  a.className = "axes";
+  for (i=0; i<gamepad.axes.length; i++) {
+    e = document.createElement("meter");
+    e.className = "axis";
+    //e.id = "a" + i;
+    e.setAttribute("max", "1");
+	e.setAttribute("min", "-1");
+	e.setAttribute("low", "0");
+    e.setAttribute("value", "1");
+    e.innerHTML = i;
+	f = document.createElement("label");
+	f.setAttribute("for", "a" + i);
+	f.innerHTML = "a" + i;
+    a.appendChild(f);
+	a.appendChild(e);
+  }
+  d.appendChild(a);
+  document.getElementById("controllerDisconnected").style.display = "none";
+  document.getElementById("controllerConnected").style.display = "inline-block";
+  document.getElementById("controllers").appendChild(d);
+  rAF(updateStatus);
+}
+
+function disconnecthandler(e) {
+  removegamepad(e.gamepad);
+}
+
+function removegamepad(gamepad) {
+  var d = document.getElementById("controller" + gamepad.index);
+  document.getElementById("controllers").removeChild(d);
+  delete controllers[gamepad.index];
+	document.getElementById("controllerDisconnected").style.display = "inline-block";
+	document.getElementById("controllerConnected").style.display = "none";
+}
+
+function updateStatus() {
+  scangamepads();
+  for (j in controllers) {
+    var controller = controllers[j];
+    var d = document.getElementById("controller" + j);
+	//Update Buttons
+    var buttons = d.getElementsByClassName("button");
+    for (var i=0; i<controller.buttons.length; i++) {
+      var b = buttons[i];
+      var val = controller.buttons[i];
+      var pressed = val == 1.0;
+      if (typeof(val) == "object") {
+        pressed = val.pressed;
+        val = val.value;
+      }
+      var pct = Math.round(val * 100);
+      b.style.fontSize = 100 + pct/10 + "%";
+      if (pressed) {
+        b.className = "button pressed";
+		setBindingIfListening("b"+i); //check if a command is listening for a binding
+      } else {
+        b.className = "button";
+      }
+	setFlagByBinding("b"+i, val); //set command if it is mapped.
+    }
+	//Update Axes
+    var axes = d.getElementsByClassName("axis");
+    for (var i=0; i<controller.axes.length; i++) {
+      var a = axes[i];
+      //a.innerHTML = i + ": " + controller.axes[i].toFixed(4);
+      a.setAttribute("value", controller.axes[i]);
+	  if (Math.abs(controller.axes[i]) > 0.9) {
+	  setBindingIfListening("a"+i); //bind axis if listening, and strong movement.
+	  }
+	  setFlagByBinding("a"+i, controller.axes[i]);
+    }
+  }
+  displayBindings();
+  rAF(updateStatus);
+}
+
+function scangamepads() {
+  var gamepads = navigator.getGamepads ? navigator.getGamepads() : (navigator.webkitGetGamepads ? navigator.webkitGetGamepads() : []);
+  for (var i = 0; i < gamepads.length; i++) {
+    if (gamepads[i]) {
+      if (!(gamepads[i].index in controllers)) {
+        addgamepad(gamepads[i]);
+      } else {
+        controllers[gamepads[i].index] = gamepads[i];
+      }
+    }
+  }
+}
+
+if (haveEvents) {
+  window.addEventListener("gamepadconnected", connecthandler);
+  window.addEventListener("gamepaddisconnected", disconnecthandler);
+} else {
+  setInterval(scangamepads, 500);
+}
+//Keyboard section
+document.addEventListener('keydown', function(e) {
+	var code = e.keyCode || e.which;
+	setBindingIfListening("k"+code);
+	setFlagByBinding("k"+code,1);
+}, false);
+document.addEventListener('keyup', function(e) {
+	var code = e.keyCode || e.which;
+	setFlagByBinding("k"+code,0);
+}, false);
+
+function cloneObject(obj) { //Used by reset control bindings
+    if (obj === null || typeof obj !== 'object') {
+        return obj;
+    }
+    var temp = obj.constructor(); // give temp the original obj's constructor
+    for (var key in obj) {
+        temp[key] = cloneObject(obj[key]);
+    } 
+    return temp;
+}
+
+function reset(ctlArray) { //resets control bindings to another control scheme array
+listening=undefined;
+ctlBindings=cloneObject(ctlArray);
+}
+
+function config(command) { //Set control binding to listening
+listening=command;
+ctlBindings[command]=undefined; //clear previous binding
+}
+
+function setBindingIfListening(input) {
+	if (listening != undefined) { //Listening for new binding
+		for (var command in ctlBindings) { //clear previous bindings
+			if (ctlBindings.hasOwnProperty(command) && ctlBindings[command]==input) {
+			ctlBindings[command]=undefined; 
+			}
+		}
+	ctlBindings[listening]=input;
+	listening = undefined;
+	}
+}
+
+function setFlagByBinding(input, value){
+	for (var command in ctlBindings) {
+		if (ctlBindings.hasOwnProperty(command) && ctlBindings[command]==input) {
+		ctlFlags[command]=value;
+		}
+	}
+}
+
+function displayBindings() {
+var bindings = document.getElementsByClassName("binding");
+	for (var i=0; i < bindings.length; i++) {
+	command = bindings[i].id;
+		if (ctlBindings[command] != undefined) {
+		document.getElementById(command).innerHTML = keyCodeLookup(ctlBindings[command]) + '<br><meter min="-1" max="1" low="0" value=\"' + ctlFlags[command] + '\" ></meter>';
+		} else { //command has been cleared
+		document.getElementById(command).innerHTML="??";
+		}
+	}
+}
+
+function toggleControllersDisplay() {
+var toggleControllersDisplay = document.getElementById("toggleControllersDisplay").checked;
+document.getElementById("controllers").style.display = toggleControllersDisplay ? 'block' : 'none';
+}

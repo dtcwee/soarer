@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title> Soarer PC </title>
+	<!-- Use correct character set. -->
+	<meta charset="utf-8">
+	<!-- Tell IE to use the latest, best version. -->
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<!-- Make the application on mobile take up the full browser screen and disable user scaling. -->
+	<meta name="viewport"
+		content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+	<script type="text/javascript" src="./keyCodes.js"></script>
+	<script type="text/javascript" src="./cookie.js"></script>
+	<script type="text/javascript" src="./controller.js"></script>
+	<script src="https://cesium.com/downloads/cesiumjs/releases/1.76/Build/Cesium/Cesium.js"></script>
+	<script src="https://ajax.aspnetcdn.com/ajax/jQuery/jquery-3.2.1.min.js"></script>
+	<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+	<script type="text/javascript" src="../common/accounts.js"></script>
+	<script type="text/javascript" src="../common/dayNight.js"></script>
+	<script type="text/javascript" src="../common/cloudRectangle.js"></script>
+
+	<style>
+		@import url(https://fonts.googleapis.com/icon?family=Material+Icons);
+		@import url(https://code.jquery.com/ui/1.12.1/themes/dark-hive/jquery-ui.css);
+		@import url(https://cesium.com/downloads/cesiumjs/releases/1.76/Build/Cesium/Widgets/widgets.css);
+		@import url(./main.css);
+		@import url(./controller.css);
+		@import url(../common/loader.css);
+	</style>
+</head>
+
+<body>
+	<div id="cesiumContainer" class="fullSize"></div>
+	<div id="loading-overlay"></div>
+	<div id="toolbar">
+		<i class="material-icons cesium-button" title="Settings" onclick="toggleSettings();">settings</i>
+		<a href="https://mobileflightapp.wordpress.com/about/" style="color:inherit;"><i class="material-icons">help
+				share</i></a>
+		<div id='debug' classs="config-group" style='display:none'>
+			<div>
+				Pos: <span id='cameraPosition'> </span>,
+				v: <span id='cameraSpeed'></span>km/s,
+			</div>
+			<div>Local Time: <span id="localTime"> </span>, Local hour angle: <span id="hourAngle"></span>&deg;</div>
+			<div> Sun Declination: <span id="sunDeclination"></span>&deg;, Solar Elevation: <span
+					id="solarElevation"></span>&deg;</div>
+			<div> Night: <span id="overlayAlpha"> </span> </div>
+			<div id="error" style="color:#FF0000"> </div>
+			<div id="controllers" class="controllers" style="display: none"></div>
+		</div>
+
+		<div id="settings">
+			<ul>
+				<li><a href="#display" title="Display"><i class="material-icons">monitor</i>Display</a></li>
+				<li><a href="#controls" title="Controls"><i class="material-icons">videogame_asset keyboard</i>Controls</a></li>
+			</ul>
+			<div id="display" title="Display">
+				<div class="controlgroup">
+					<label for='toggleCloud' title=" Show Clouds"><i class="material-icons">cloud</i></label>
+					<input type='checkbox' id='toggleCloud' onchange='toggleCloud();' />
+			
+					<label for='toggleOsmBuildings' title="Show OSM Buildings"><i class="material-icons">location_city</i></label>
+					<input type='checkbox' id='toggleOsmBuildings' onchange='toggleOsmBuildings();' />
+			
+					<label for='toggleDayNight' title="Show Day/Night/Shadows"><i
+							class="material-icons">brightness_medium</i></label>
+					<input type='checkbox' id='toggleDayNight' onchange='toggleDayNight();' />
+			
+					<label for='toggleTimeControl' title="Show Time Controls"><i class="material-icons">access_time</i></label>
+					<input type='checkbox' id='toggleTimeControl' onchange='toggleTimeControl();' />
+			
+					<label for='toggleDebug' title="Show Debug"><i class="material-icons">bug_report</i></label>
+					<input type='checkbox' id='toggleDebug' onchange='toggleDebug();' />
+				</div>
+				<div id="cloudSettings" title="Cloud Settings">
+					<fieldset>
+						<legend><i class="material-icons" title="Cloud Settings">settings_system_daydream</i>Cloud Settings</legend>
+						<i class="material-icons">speed</i>
+						<input type="range" id="cloudSpeed" min="1" max="10" value='5' step='1' onchange="setCloudSpeed()"/>
+					</fieldset>
+					<fieldset>
+						<i class="material-icons">cloud_download</i>
+						<input type="range" id="cloudAltitude" min="1" max="7" value='3' step='1' onchange="setCloudAltitude()"/>
+						<i class="material-icons">cloud_upload</i>
+					</fieldset>
+				</div>
+			</div>
+			<div id="controls">
+				<fieldset style="display: inline-block;">
+					<legend><i class="material-icons" title="Restore Defaults"> restore </i>Reset</legend>
+					<div class="controlgroup ui-corner-all">
+						<button title="Default Gamepad" onclick='reset(defaultGamepadBindings);'><i class="material-icons">
+								videogame_asset </i></button>
+						<button title="Default Keyboard" onclick='reset(defaultKeyboardBindings);'><i class="material-icons"> keyboard
+							</i></button>
+					</div>
+				</fieldset>	
+				<fieldset style="display: inline-block;">
+					<legend><i class="material-icons"  title="Sensitivity">edgesensor_high</i>Sensitivity</legend>
+					<i class="material-icons">volume_off</i>
+					<input type="range" id="sensitivity" min="0" max="10" value='3' step='1' />
+					<i class="material-icons">volume_up</i>
+				</fieldset>
+				
+			<span>Bindings Autosave: ON</span>
+				<span id="controllerStatus" class="material-icons config-group ui-state-highlight ui-corner-all" style="float:right">
+					<div id="controllerDisconnected" style="display:inline" title="Connect controller and press button"><i
+							class="material-icons"> videogame_asset power_off</i></div>
+					<div id="controllerConnected" style="display:none" title="Controller connected">
+						<i class="material-icons">videogame_asset power</i>
+					</div>
+				</span>			
+			<br>
+				<fieldset style="display: inline-block;">
+					<legend><i class="material-icons"> visibility </i>Look/Rotate</legend>
+				<table>
+					<tr>
+						<td class="commandIcon" title="Look Up"> &neArr; </td>
+						<td id="lookUp" class="binding cesium-button" title="Look Up" onclick='config("lookUp");'> </td>
+						<td class="commandIcon" title="Look Down"> &seArr; </td>
+						<td id="lookDown" class="binding cesium-button" title="Look Down" onclick='config("lookDown");'>
+						</td>
+					</tr>
+					<tr>
+						<td class="commandIcon" title="Look Left"> &lArr; </td>
+						<td id="lookLeft" class="binding cesium-button" title="Look Left" onclick='config("lookLeft");'>
+						</td>
+						<td class="commandIcon" title="Look Right"> &rArr; </td>
+						<td id="lookRight" class="binding cesium-button" title="Look Right"
+							onclick='config("lookRight");'> </td>
+					</tr>
+					<tr>
+						<td class="commandIcon" title="Roll Left"> &larrpl; </td>
+						<td id="twistLeft" class="binding cesium-button" title="Roll Left"
+							onclick='config("twistLeft");'> </td>
+						<td class="commandIcon" title="Roll Right"> &cudarrl; </td>
+						<td id="twistRight" class="binding cesium-button" title="Roll Right"
+							onclick='config("twistRight");'> </td>
+					</tr>
+				</table>
+				</fieldset>
+				<fieldset style="display: inline-block;">
+					<legend><i class="material-icons"> flight</i>Move/Translate</legend>
+				<table>
+					<tr>
+						<td class="commandIcon" title="Forward"> &Uarr; </td>
+						<td id="moveForward" class="binding cesium-button" title="Forward"
+							onclick='config("moveForward");'> </td>
+						<td class="commandIcon" title="Backward"> &Darr;</td>
+						<td id="moveBackward" class="binding cesium-button" title="Backward"
+							onclick='config("moveBackward");'> </td>
+					</tr>
+					<tr>
+						<td class="commandIcon" title="Up"> &mapstoup; </td>
+						<td id="moveUp" class="binding cesium-button" title="Up" onclick='config("moveUp");'> </td>
+						<td class="commandIcon" title="Down"> &mapstodown; </td>
+						<td id="moveDown" class="binding cesium-button" title="Down" onclick='config("moveDown");'>
+						</td>
+					</tr>
+					<tr>
+						<td class="commandIcon" title="Left"> &mapstoleft; </td>
+						<td id="moveLeft" class="binding cesium-button" title="Left" onclick='config("moveLeft");'>
+						</td>
+						<td class="commandIcon" title="Right"> &#8614; </td>
+						<td id="moveRight" class="binding cesium-button" title="Right" onclick='config("moveRight");'>
+						</td>
+					</tr>
+				</table>
+			</fieldset>
+			</div>
+		</div>
+	</div>
+
+</body>
+<script type="text/javascript">
+	/* debugging variables */
+	var debug = true;
+	debugDayNight = true; //from dayNight.js
+	var precision = 1;
+
+	/* Initialise Cesium */
+	/* Set default view based on timezone offset*/
+	/* Convert timezone offset to rough longtitude in radians */
+	var d = new Date();
+	var n = d.getTimezoneOffset();
+	var longtitude = -Cesium.Math.convertLongitudeRange((n / 60 * 2 * Math.PI / 24));
+	/* Initialise Cesium's starting camera view rectangle: West, South, East, North*/
+	var extent = new Cesium.Rectangle(Cesium.Math.convertLongitudeRange(longtitude - Cesium.Math.PI_OVER_TWO),
+		-Cesium.Math.PI_OVER_TWO,
+		Cesium.Math.convertLongitudeRange(longtitude + Cesium.Math.PI_OVER_TWO),
+		Cesium.Math.PI_OVER_TWO);
+	Cesium.Camera.DEFAULT_VIEW_RECTANGLE = extent;
+	Cesium.Camera.DEFAULT_VIEW_FACTOR = 0;
+
+	/*Initialise Keys and Tokens*/
+	//Cesium.BingMapsApi.defaultKey = globalBingMapsApiDefaultKey; //defined in accounts.js
+	Cesium.Ion.defaultAccessToken = globalCesiumIonDefaultAccessToken; //defined in accounts.js
+
+	try {
+		var viewer = new Cesium.Viewer('cesiumContainer', {
+			//imageryProvider: Cesium.createWorldImagery(), // use the Bing Maps Aerial imagery from ion (this is the default)
+			terrainProvider: Cesium.createWorldTerrain(), // use the Cesium World Terrain from ion
+			animation: true,
+			timeline: true,
+			shouldAnimate: true,
+			scene3DOnly: true,
+			navigationHelpButton: false,
+			sceneModePicker: false,
+			vrButton: true
+		});
+	} catch (error) {
+		document.body.innerHTML = "<h1>Sorry, your flight has been delayed</h1> <div> Try a different browser or device (with better WebGL support) </div> <div>" + error + "</div>";
+	}
+	var scene = viewer.scene;
+	var canvas = viewer.canvas;
+	canvas.setAttribute('tabindex', '0'); // needed to put focus on the canvas
+	canvas.onclick = function () {
+		canvas.focus();
+	};
+
+	/* initialise graphics settings */
+	scene.globe.showWaterEffect = false;
+	scene.globe.enableLighting = true;
+
+	/* Day/Night Initialise*/
+	var imageryLayers = viewer.scene.imageryLayers;
+	var blackMarble = viewer.imageryLayers.addImageryProvider(
+		new Cesium.IonImageryProvider({ assetId: 3812 })
+	);
+
+	/* Create cloud layer */
+	var cloudObject = createCloudRectangle(viewer); //from cloudRectangle.js
+
+	/* Create OsmBuildings */
+	var osmBuildings = viewer.scene.primitives.add(Cesium.createOsmBuildings());
+
+	var oldJulianDate = new Cesium.JulianDate();
+	var oldCameraPosition = viewer.camera.position;
+	//Clock Tick Loop Start	
+	viewer.clock.onTick.addEventListener(function (clock) {
+		var camera = viewer.camera;
+		const cameraHeightMax = 25000000;
+		var cameraHeight = camera.positionCartographic.height;
+		var sensitivity = $('#sensitivity').val();
+		var maxSensitivity = $('#sensitivity').prop('max');
+
+		//Check maximum height and bounce camera position if necessary
+		//Code modified from: https://www.programmersought.com/article/55093165838/
+		if (cameraHeight > cameraHeightMax) {
+			camera.setView({
+				destination: Cesium.Cartesian3.fromRadians(camera.positionCartographic.longitude, camera.positionCartographic.latitude, cameraHeightMax*0.9),
+				orientation: {
+                	direction: viewer.camera.direction,
+                	up: viewer.camera.up,
+            	}
+			});
+		}
+
+		/*Radial deadzone from http://www.third-helix.com/2013/04/12/doing-thumbstick-dead-zones-right.html */
+		var lookMagnitude = Math.sqrt(Math.pow((ctlFlags['lookUp'] - ctlFlags['lookDown']), 2) + Math.pow((ctlFlags['lookLeft'] - ctlFlags['lookRight']), 2) + Math.pow((ctlFlags['twistLeft'] - ctlFlags['twistRight']), 2));
+		var moveMagnitude = Math.sqrt(Math.pow((ctlFlags['moveForward'] - ctlFlags['moveBackward']), 2) + Math.pow((ctlFlags['moveUp'] - ctlFlags['moveDown']), 2) + Math.pow((ctlFlags['moveLeft'] - ctlFlags['moveRight']), 2));
+		var lookDeadzone = lookMagnitude > (maxSensitivity - sensitivity) / 33 ? true : false;
+		var moveDeadzone = moveMagnitude > (maxSensitivity - sensitivity) / 33 ? true : false;
+
+		var lookRate = lookDeadzone ? sensitivity / 100 : 0;
+		var moveRate = moveDeadzone ? cameraHeight / 100 * sensitivity : 0;
+
+		camera.lookUp(ctlFlags['lookUp'] * lookRate);
+		camera.lookDown(ctlFlags['lookDown'] * lookRate);
+		camera.lookLeft(ctlFlags['lookLeft'] * lookRate);
+		camera.lookRight(ctlFlags['lookRight'] * lookRate);
+		camera.twistLeft(ctlFlags['twistLeft'] * lookRate);
+		camera.twistRight(ctlFlags['twistRight'] * lookRate);
+		//Preference forward-backward motion
+		camera.moveForward(ctlFlags['moveForward'] * moveRate);
+		camera.moveBackward(ctlFlags['moveBackward'] * moveRate);
+		camera.moveUp(ctlFlags['moveUp'] * moveRate / 2);
+		camera.moveDown(ctlFlags['moveDown'] * moveRate / 2);
+		camera.moveLeft(ctlFlags['moveLeft'] * moveRate / 2);
+		camera.moveRight(ctlFlags['moveRight'] * moveRate / 2);
+
+		/* Debug Display */
+		var cameraLongitude = camera.positionCartographic.longitude;
+		var cameraLatitude = camera.positionCartographic.latitude;
+		var secondsDifference = Cesium.JulianDate.secondsDifference(Cesium.JulianDate.now(), oldJulianDate);
+		oldJulianDate = Cesium.JulianDate.now();
+		var distance = Cesium.Cartesian3.distance(camera.position, oldCameraPosition);
+		oldCameraPosition = camera.position.clone();
+		$("#cameraSpeed").html(debug ? (distance / 1000 / secondsDifference).toFixed(0) : '') ;
+
+		/* Day/Night functions */
+		blackMarble.alpha = getNightLayerAlpha(clock); //from dayNight.js
+
+		displayBindings(); //from controllers.js
+	});
+	//Clock Tick Loop End
+
+	/*Display functions */
+	/* enableLighting makes the globe too dark. Adjust gamma and brightness of all layers */
+	function adjustLighting(value) {
+		for (i = 0; i < imageryLayers.length; i++) {
+			imageryLayers.get(i).gamma = value;
+			imageryLayers.get(i).brightness = value;
+		}
+	}
+
+	function toggleSettings() {
+		var settings = $('#settings');
+		settings.fadeToggle();
+	}
+
+	function toggleCloud() {
+		var showCloudObject = $('#toggleCloud').prop('checked');
+		cloudObject.show = showCloudObject;
+		toggleCloudSettings();
+	}
+
+	function toggleCloudSettings() {
+		var cloudSettings = $('#cloudSettings');
+		cloudSettings.fadeToggle();
+	}
+
+	function setCloudSpeed() {
+		var newCloudSpeed = $('#cloudSpeed').val();
+		cloudSpeed = newCloudSpeed;
+	}
+
+	function setCloudAltitude() {
+		var newCloudAltitude = $('#cloudAltitude').val();
+		cloudAltitude = newCloudAltitude * 1000;
+	}
+
+	function toggleOsmBuildings() {
+		var showOsmBuildings = $('#toggleOsmBuildings').prop('checked');
+		osmBuildings.show = showOsmBuildings;
+	}
+
+	function toggleDebug() {
+		debugContainer = $('#debug');
+		debugContainer.toggle();
+		toggleControllersDisplay(); //check controller connected before displaying
+	}
+
+	function toggleDayNight() {
+		var showDayNight = $('#toggleDayNight').prop('checked');
+		blackMarble.show = showDayNight ? true : false;
+		scene.globe.enableLighting = showDayNight ? true : false;
+		if (showDayNight) {
+			adjustLighting(1.25);
+		} else {
+			adjustLighting(1);
+		}
+	}
+
+	function toggleTimeControl() {
+		animationContainer = $('.cesium-viewer-animationContainer');
+		animationContainer.fadeToggle();
+
+		timelineContainer = $('.cesium-viewer-timelineContainer');
+		timelineContainer.fadeToggle();
+	}
+
+	var helper = new Cesium.EventHelper();
+	helper.add(viewer.scene.globe.tileLoadProgressEvent, function (event) {
+		//console.log("Tiles to load: " + event);
+		$("#loading-overlay").html((100 - event) + '%');
+		if (event == 0) { //Tiles loaded. Time to Initialise.
+			$("#settings").tabs();
+			$(".controlgroup").controlgroup();
+			$("#toggleCloud").prop("checked", true).checkboxradio('refresh');
+			$("#toggleOsmBuildings").prop("checked", true).checkboxradio('refresh');
+			$("#toggleDayNight").prop("checked", true).checkboxradio('refresh');
+			
+			toggleTimeControl(); //initialise Time Controls to 'off'
+			toggleDayNight();
+			$("#loading-overlay").hide();
+			helper.removeAll();
+		}
+	});
+</script>
+
+</html>

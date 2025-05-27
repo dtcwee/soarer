@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title> Soarer PC </title>
+  <!-- Use correct character set. -->
+  <meta charset="utf-8">
+  <!-- Tell IE to use the latest, best version. -->
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <!-- Make the application on mobile take up the full browser screen and disable user scaling. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+<style>
+@import url(https://fonts.googleapis.com/icon?family=Material+Icons);
+@import url(../../Build/Cesium/Widgets/widgets.css);
+@import url(./bucket.css);
+@import url(./controller.css);
+@import url(../loader.css);
+</style>
+</head>
+<body>
+<div id="cesiumContainer" class="fullSize"></div>
+<div id="loading-overlay"></div>
+<div id="toolbar">
+	<i class="material-icons cesium-button" title="Settings" onclick="toggleDisplayById('settings');">settings</i> 	<a href="https://mobileflightapp.wordpress.com/about/" style="color:inherit;"><i class="material-icons">help share</i></a>	
+		<div id='debug'>
+		<div>
+		Pos: <span id = 'cameraPosition'> </span>, 
+		v: <span id='cameraSpeed'></span>km/s, 
+		</div>
+		<div>Local Time: <span id="localTime"> </span>, Local hour angle: <span id="hourAngle"></span>&deg;</div>
+		<div> Sun Declination: <span id="sunDeclination"></span>&deg;, Solar Elevation: <span id="solarElevation"></span>&deg;</div>
+		<div> Night: <span id="overlayAlpha"> </span> </div>
+		<span id="error" style="color:#FF0000"> </span>
+		</div>
+	<div id="settings">
+
+		<div class="config-group" title="Display">
+		<label for='toggleDayNight' title="Show Day/Night/Shadow"><i class="material-icons">brightness_medium</i>
+		<input type='checkbox' id='toggleDayNight' onchange='toggleDayNight();' checked/></label>
+		
+		<label for='toggleTimeControl' title="Show Time Controls"><i class="material-icons">access_time</i>
+		<input type='checkbox' id='toggleTimeControl' onchange='toggleTimeControl();' /></label>
+		
+		<label for='toggleDebug' title="Show Debug"><i class="material-icons">bug_report</i>
+		<input type='checkbox' id='toggleDebug' onchange='toggleDebug();'/></label>
+		</div>
+		
+		<div class="config-group" title="Sensitivity">
+			<i class="material-icons">volume_off</i>
+			<input type="range" id="sensitivity" min="0" max="10" value='3' step='1'/>
+			<i class="material-icons">volume_up</i>
+		</div>
+		
+		<div id="controllerDisconnected" style="display:inline-block" title="Connect controller and press button"><i class="material-icons config-group"> videogame_asset power warning</i></div>
+		<div id="controllerConnected" style="display: none">
+			<label for='toggleControllersDisplay' class="config-group" title="Display Controllers"><i class="material-icons">videogame_asset visibility</i>
+			<input type="checkbox" id="toggleControllersDisplay" onChange='toggleControllersDisplay();'/></label>
+
+		</div>			
+		<div id="controllers" class="controllers" style="display: none"></div>
+
+		<div id="bindings">
+		<table class="config-group">
+		<tr><td colspan="4" align = "left" title="Configure Look"> <i class="material-icons"> visibility build</i> </td></tr>
+		<tr> <td class="commandIcon" title="Look Up"> &neArr; </td> <td id="lookUp" class="binding cesium-button" title="Look Up" onclick='config("lookUp");'> </td>  <td class="commandIcon" title="Look Down"> &seArr; </td> <td id="lookDown" class="binding cesium-button" title="Look Down" onclick='config("lookDown");'> </td> </tr>
+		<tr> <td class="commandIcon" title="Look Left"> &lArr; </td> <td id="lookLeft" class="binding cesium-button" title="Look Left" onclick='config("lookLeft");'> </td>  <td class="commandIcon" title="Look Right"> &rArr; </td> <td id="lookRight" class="binding cesium-button" title="Look Right" onclick='config("lookRight");'> </td></tr>
+		<tr> <td class="commandIcon" title="Roll Left"> &larrpl; </td> <td id="twistLeft" class="binding cesium-button" title="Roll Left" onclick='config("twistLeft");'> </td> <td class="commandIcon" title="Roll Right"> &cudarrl; </td> <td id="twistRight" class="binding cesium-button" title="Roll Right" onclick='config("twistRight");'> </td> </tr>
+		</table>
+
+		<table class="config-group">
+		<tr><td colspan="4" align = "left" title="Configure Move"> <i class="material-icons"> flight build</i> </td></tr>
+		<tr> <td class="commandIcon" title="Forward"> &Uarr; </td> <td id="moveForward" class="binding cesium-button" title="Forward" onclick='config("moveForward");'> </td>  <td class="commandIcon" title="Backward"> &Darr;</td> <td id="moveBackward" class="binding cesium-button" title="Backward" onclick='config("moveBackward");'> </td> </tr>
+		<tr> <td class="commandIcon" title="Up"> &mapstoup; </td> <td id="moveUp" class="binding cesium-button" title="Up" onclick='config("moveUp");'> </td>  <td class="commandIcon" title="Down"> &mapstodown; </td> <td id="moveDown" class="binding cesium-button" title="Down" onclick='config("moveDown");'> </td> </tr>
+		<tr> <td class="commandIcon" title="Left"> &mapstoleft; </td> <td id="moveLeft" class="binding cesium-button" title="Left" onclick='config("moveLeft");'> </td> <td class="commandIcon" title="Right"> &#8614; </td> <td id="moveRight" class="binding cesium-button" title="Right" onclick='config("moveRight");'> </td> </tr>
+		</table>
+		</div>
+				
+		<div class="config-group" title="Reset">
+			<i class="material-icons cesium-button" title="Default Gamepad" onclick='reset(defaultGamepadBindings);'> videogame_asset </i>
+			<i class="material-icons" title="restore"> restore </i>
+			<i class="material-icons cesium-button" title="Default Keyboard" onclick='reset(defaultKeyboardBindings);'> keyboard </i>
+		</div>					
+	</div>
+</div>
+
+</body>
+<script type="text/javascript" src="./keyCodes.js"></script>
+<script type="text/javascript" src="./cookie.js"></script>
+<script type="text/javascript" src="./controller.js"></script>
+<script type="text/javascript" src="../../Build/Cesium/Cesium.js"></script>
+<script src="https://ajax.aspnetcdn.com/ajax/jQuery/jquery-3.2.1.min.js"></script>
+<script type = "text/javascript">
+/* debugging variables */
+var debug = false;
+var precision = 1;
+
+/* Initialise Cesium */
+/* Set default view based on timezone offset*/
+/* Convert timezone offset to rough longtitude in radians */
+var d = new Date();
+var n = d.getTimezoneOffset();
+var longtitude = -Cesium.Math.convertLongitudeRange((n/60 * 2*Math.PI/24));
+/* Initialise Cesium's starting camera view rectangle: West, South, East, North*/
+var extent = new Cesium.Rectangle(Cesium.Math.convertLongitudeRange(longtitude - Cesium.Math.PI_OVER_TWO),
+	-Cesium.Math.PI_OVER_TWO,
+	Cesium.Math.convertLongitudeRange(longtitude + Cesium.Math.PI_OVER_TWO),
+	Cesium.Math.PI_OVER_TWO);			
+Cesium.Camera.DEFAULT_VIEW_RECTANGLE = extent;
+Cesium.Camera.DEFAULT_VIEW_FACTOR = 0;
+Cesium.BingMapsApi.defaultKey = 'AiX8p3EuD3mBnAmAL7GB6nkupA98QgfclryjF6EGeDb-Jxy55TuFpjsOa4uSGNe2'
+
+try {
+	var viewer = new Cesium.Viewer('cesiumContainer', {
+			animation : true,
+			timeline : true,
+			scene3DOnly : true,
+			navigationHelpButton : false,
+			sceneModePicker : false,
+		});
+} catch (error) {
+	document.body.innerHTML = "<h1>Sorry, your flight has been delayed</h1> <div> Try a different browser or device (with better WebGL support) </div> <div>" + error + "</div>";
+}
+var scene = viewer.scene;
+var canvas = viewer.canvas;
+canvas.setAttribute('tabindex', '0'); // needed to put focus on the canvas
+canvas.onclick = function() {
+    canvas.focus();
+};
+
+/*set default terrain*/
+var terrainProvider = new Cesium.CesiumTerrainProvider({
+    url : '//assets.agi.com/stk-terrain/world'
+});
+viewer.terrainProvider = terrainProvider;
+
+/* initialise graphics settings */
+scene.globe.showWaterEffect = true;
+scene.globe.enableLighting = true;
+
+/* Day/Night Initialise*/
+var imageryLayers = viewer.scene.imageryLayers;
+var blackMarble = imageryLayers.addImageryProvider(Cesium.createTileMapServiceImageryProvider({
+    url : 'https://cesiumjs.org/tilesets/imagery/blackmarble',
+    defaultBrightness: 1.0,
+    defaultGamma: 1.0,
+    maximumLevel : 8,
+    credit : 'Black Marble imagery courtesy NASA Earth Observatory',
+    flipXY : true // Only old gdal2tile.py generated tilesets need this flag.
+}));
+
+var oldJulianDate = new Cesium.JulianDate();
+var oldCameraPosition = viewer.camera.position;
+//Clock Tick Loop Start	
+viewer.clock.onTick.addEventListener(function (clock) {
+var camera = viewer.camera;
+var cameraHeight = scene.globe.ellipsoid.cartesianToCartographic(camera.position).height;
+var sensitivity = document.getElementById("sensitivity").value;
+var maxSensitivity = document.getElementById("sensitivity").max;
+
+/*Radial deadzone from http://www.third-helix.com/2013/04/12/doing-thumbstick-dead-zones-right.html */
+var lookMagnitude = Math.sqrt(Math.pow((ctlFlags['lookUp'] - ctlFlags['lookDown']),2) + Math.pow((ctlFlags['lookLeft'] - ctlFlags['lookRight']),2) + Math.pow((ctlFlags['twistLeft'] - ctlFlags['twistRight']),2));
+var moveMagnitude = Math.sqrt(Math.pow((ctlFlags['moveForward'] - ctlFlags['moveBackward']),2) + Math.pow((ctlFlags['moveUp'] - ctlFlags['moveDown']),2) + Math.pow((ctlFlags['moveLeft'] - ctlFlags['moveRight']),2));
+var lookDeadzone = lookMagnitude > (maxSensitivity-sensitivity)/33 ? true:false;
+var moveDeadzone = moveMagnitude > (maxSensitivity-sensitivity)/33 ? true:false;
+
+var lookRate = lookDeadzone ? sensitivity / 100 : 0;
+var moveRate = moveDeadzone ? cameraHeight / 100 * sensitivity : 0;
+
+camera.lookUp(ctlFlags['lookUp']*lookRate);
+camera.lookDown(ctlFlags['lookDown']*lookRate);
+camera.lookLeft(ctlFlags['lookLeft']*lookRate);
+camera.lookRight(ctlFlags['lookRight']*lookRate);
+camera.twistLeft(ctlFlags['twistLeft']*lookRate);
+camera.twistRight(ctlFlags['twistRight']*lookRate);
+//Preference forward-backward motion
+camera.moveForward(ctlFlags['moveForward']*moveRate);
+camera.moveBackward(ctlFlags['moveBackward']*moveRate);
+camera.moveUp(ctlFlags['moveUp']*moveRate/2);
+camera.moveDown(ctlFlags['moveDown']*moveRate/2);
+camera.moveLeft(ctlFlags['moveLeft']*moveRate/2);
+camera.moveRight(ctlFlags['moveRight']*moveRate/2);
+
+/* Debug Display */
+var cameraLongitude = camera.positionCartographic.longitude;
+var cameraLatitude = camera.positionCartographic.latitude;
+var secondsDifference = Cesium.JulianDate.secondsDifference(Cesium.JulianDate.now(), oldJulianDate);
+oldJulianDate=Cesium.JulianDate.now();
+var distance = Cesium.Cartesian3.distance(camera.position, oldCameraPosition);
+oldCameraPosition = camera.position.clone();
+document.getElementById("cameraSpeed").innerHTML = debug ? (distance/1000/secondsDifference).toFixed(0) : '';
+
+/* Day/Night functions */
+if (document.getElementById('toggleDayNight').checked) {
+	$("#cameraPosition").text(debug ? (cameraLongitude * Cesium.Math.DEGREES_PER_RADIAN).toFixed(2) +'E, ' + (cameraLatitude * Cesium.Math.DEGREES_PER_RADIAN).toFixed(2) +'N, ' + (cameraHeight/1000).toFixed(2) + 'km': '');
+	var secondsOffset = cameraLongitude * 12 * 60 * 60 / Math.PI;
+	var localJulianDate = new Cesium.JulianDate();
+	Cesium.JulianDate.addSeconds(clock.currentTime, secondsOffset, localJulianDate);
+	var localGregorianDate = new Cesium.JulianDate.toGregorianDate(localJulianDate);
+	$("#localTime").text(debug ? (localGregorianDate.hour + ":" + localGregorianDate.minute + ":" + localGregorianDate.second) : '');
+		//Calculate Sun Declination
+	var sunDeclination = Cesium.Math.clampToLatitudeRange(
+						Cesium.Math.PI_OVER_TWO 
+						- Cesium.Spherical.fromCartesian3(
+							Cesium.Simon1994PlanetaryPositions.computeSunPositionInEarthInertialFrame(localJulianDate)
+							).cone
+						);
+	$("#sunDeclination").text(debug ? Cesium.Math.toDegrees(sunDeclination).toFixed(2):'');
+	//Calculate Hour, Solar Angles
+	var hourAngle = (localJulianDate.secondsOfDay / (12 * 60 * 60) * Math.PI);
+	$("#hourAngle").text(debug ? Cesium.Math.toDegrees(hourAngle).toFixed(2): '');
+	var cosSolarZenithAngle = Math.sin(cameraLatitude) * Math.sin(sunDeclination) 
+				+ Math.cos(cameraLatitude) * Math.cos(sunDeclination) * Math.cos(hourAngle);
+	var solarElevation = Math.asin(cosSolarZenithAngle);
+	$("#solarElevation").text(debug ? Cesium.Math.toDegrees(solarElevation).toFixed(2): '');
+	//var overlayAlpha = 0.5 * Math.cos((localJulianDate.secondsOfDay / (12 * 60 * 60) * Math.PI) - Math.PI) + 0.5;
+	var overlayAlpha = 0.5 * -cosSolarZenithAngle + 0.5;
+	$("#overlayAlpha").text(debug ? overlayAlpha.toFixed(precision) : '');
+	blackMarble.alpha = overlayAlpha;
+}
+
+displayBindings(); //from controllers.js
+});
+//Clock Tick Loop End
+
+/*Display functions */
+/* enableLighting makes the globe too dark. Adjust gamma and brightness of all layers */
+function adjustLighting(value) {
+	for (i = 0; i < imageryLayers.length; i++) {
+		imageryLayers.get(i).gamma = value;
+		imageryLayers.get(i).brightness = value;
+	}
+}
+
+function toggleDisplayById(id) {
+	element = document.getElementById(id);
+	element.style.display = element.style.display == 'none' ? 'block' : 'none';
+}
+
+function toggleDebug(){
+debug = document.getElementById('toggleDebug').checked;
+document.getElementById('debug').style.display = debug ? 'inline' : 'none';
+}
+
+function toggleDayNight() {
+	var showDayNight = document.getElementById('toggleDayNight').checked;
+	blackMarble.show = showDayNight ? true : false;
+	if (showDayNight) {
+		adjustLighting(1.25);
+	} else {
+		adjustLighting(1);
+	}
+}
+
+function toggleTimeControl() {
+var timeControl = document.getElementById('toggleTimeControl').checked;
+animationContainer = document.getElementsByClassName('cesium-viewer-animationContainer');
+    for (var i = 0; i < animationContainer.length; i++) {
+        animationContainer[i].style.display = timeControl ? 'inline' : 'none';
+    }
+timelineContainer = document.getElementsByClassName('cesium-viewer-timelineContainer');
+    for (var i = 0; i < timelineContainer.length; i++) {
+        timelineContainer[i].style.display = timeControl ? 'inline' : 'none';
+    }
+}
+
+var helper = new Cesium.EventHelper();
+helper.add(viewer.scene.globe.tileLoadProgressEvent, function (event) {
+//console.log("Tiles to load: " + event);
+		document.getElementById("loading-overlay").innerHTML = (100 - event) + '%';
+	if (event == 0 ) { //Tiles loaded. Time to Initialise.
+		document.getElementById("loading-overlay").style.display = "none";
+		document.getElementById("loading-overlay").style.zIndex = "-99";
+		toggleTimeControl();
+		toggleDayNight();
+		toggleDebug();
+		helper.removeAll();
+		}
+});
+
+
+/* Google Analytics */
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-84468708-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</html>

@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>Soarer</title>
+	<!-- Use correct character set. -->
+	<meta charset="utf-8">
+	<!-- Tell IE to use the latest, best version. -->
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<!-- Make the application on mobile take up the full browser screen and disable user scaling. -->
+	<meta name="viewport"
+		content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+	<script type="text/javascript" src="./rotationmatrix.js"></script>
+	<script type="text/javascript" src="./gyronorm.js/dist/gyronorm.complete.min.js"></script>
+	<script src="https://cesium.com/downloads/cesiumjs/releases/1.76/Build/Cesium/Cesium.js"></script>
+	<script src="https://ajax.aspnetcdn.com/ajax/jQuery/jquery-3.2.1.min.js"></script>
+	<script type="text/javascript" src="../common/accounts.js"></script>
+	<script type="text/javascript" src="../common/dayNight.js"></script>
+	<script type="text/javascript" src="../common/cloudEllipsoid.js"></script>
+
+	<style>
+		@import url(https://fonts.googleapis.com/icon?family=Material+Icons);
+		@import url(https://cesium.com/downloads/cesiumjs/releases/1.76/Build/Cesium/Widgets/widgets.css);
+		@import url(./main.css);
+		@import url(../common/loader.css);
+	</style>
+</head>
+
+<body>
+	<div id="cesiumContainer" class="fullSize"></div>
+	<div id="loading-overlay"></div>
+	<div id="toolbar">
+		<i class="material-icons cesium-button" onclick="toggleSettings();">settings</i>
+		<a href="https://mobileflightapp.wordpress.com/about/" style="color:inherit;"><i class="material-icons">help
+				share</i></a>
+		<div id='debug' style="display:none">
+			Screen Orientation: <span id='screenOrientation'> </span>
+			<table>
+				<tr>
+					<td> Orientation </td>
+					<td> Raw </td>
+					<td> Rotated </td>
+					<td> Offset </td>
+					<td> Final </td>
+				</tr>
+				<TR>
+					<td> Yaw/&alpha;/Z: </td>
+					<td> <span id='yaw'> </span> </td>
+					<td> <span id='rotatedYaw'> </span> </td>
+					<td> <span id='offsetYaw'> </span> </td>
+					<td> <span id='finalYaw'> </span> </td>
+				</tr>
+				<TR>
+					<td> Pitch/&beta;/X: </td>
+					<td> <span id='pitch'> </span> </td>
+					<td> <span id='rotatedPitch'> </span> </td>
+					<td> <span id='offsetPitch'> </span> </td>
+					<td> <span id='finalPitch'> </span> </td>
+				</tr>
+				<TR>
+					<td> Roll/&gamma;/Y: </td>
+					<td> <span id='roll'> </span> </td>
+					<td> <span id='rotatedRoll'> </span> </td>
+					<td> <span id='offsetRoll'> </span> </td>
+					<td> <span id='finalRoll'> </span> </td>
+				</tr>
+			</table>
+			<div>
+				Pos: <span id='cameraLongitude'> </span>&deg;E, <span id='cameraLatitude'></span>&deg;N, Night: <span
+					id="overlayAlpha"> </span></br>
+				Local Time: <span id="localTime"> </span>, Hour angle: <span id="hourAngle"></span>&deg; </br>
+				Sun Decl.: <span id="sunDeclination"></span>&deg;, Sol. Elev.: <span id="solarElevation"></span>&deg;
+			</div>
+			<span id="error" style="color:#FF0000"> </span>
+		</div>
+		<div id='settings'>
+			<fieldset style="white-space: nowrap;">
+				<legend>Flip Tilt Controls</legend>
+				<label for='reverseYaw'><i class="material-icons">swap_horiz</i></label>
+				<input type="checkbox" id="reverseYaw" value="false" />
+				<label for='reversePitch'><i class="material-icons">swap_vert</i></label>
+				<input type="checkbox" id="reversePitch" value="false" />
+				<label for='reverseRoll'><i class="material-icons">screen_rotation</i></label>
+				<input type="checkbox" id="reverseRoll" value="false" />
+			</fieldset>
+			<fieldset style="white-space: nowrap;">
+				<legend>Sensitivity</legend>
+				<i class="material-icons" onclick="document.getElementById('sensitivity').stepDown(1);">volume_off</i>
+				<input type="range" id="sensitivity" min="0" max="10" value='4' step='1' />
+				<i class="material-icons" onclick="document.getElementById('sensitivity').stepUp(1);">volume_up</i>
+			</fieldset>
+			<fieldset>
+				<legend>Display</legend>
+			<label for='toggleCloudEllipsoid' title="Show Clouds"><i
+				class="material-icons">cloud</i>
+			<input type='checkbox' id='toggleCloudEllipsoid' onchange='toggleCloudEllipsoid();' checked /></label>
+			<label for='toggleOsmBuildings' title="Show OSM Buildings"><i
+				class="material-icons">location_city</i>
+			<input type='checkbox' id='toggleOsmBuildings' onchange='toggleOsmBuildings();' checked /></label>
+			<label for='toggleDayNight'><i class="material-icons">brightness_medium</i></label>
+			<input type='checkbox' id='toggleDayNight' onchange='toggleDayNight();' checked />
+			<br>
+			<label for='toggleTimeControl'><i class="material-icons">access_time</i></label>
+			<input type='checkbox' id='toggleTimeControl' onchange='toggleTimeControl();' />			
+			<label for='toggleDebug'><i class="material-icons">bug_report</i></label>
+			<input type='checkbox' id='toggleDebug' onchange='toggleDebug();' />
+		</fieldset>
+		</div>
+		<i class="material-icons cesium-button" id='calibrate' onclick="setScreenOrientation();">adjust</i>
+	</div>
+	<div id='moveControls'>
+		<table id="moveControlsTable">
+			<tr>
+				<td>
+					<i class="material-icons"
+						onclick="document.getElementById('moveForward').stepDown(1);">fast_rewind</i>
+				</td>
+				<td>
+					<input type='range' id='moveForward' min='-5' max='5' value='0.0' step='1' />
+				</td>
+				<td>
+					<i class="material-icons"
+						onclick="document.getElementById('moveForward').stepUp(1);">fast_forward</i>
+				</td>
+			</tr>
+		</table>
+	</div>
+</body>
+<script type="text/javascript">
+	//Load device orientation into variables.
+	var deviceOrientationData = null;
+	var alpha = 0.0; var beta = 0.0; var gamma = 0.0;
+	var rotatedYPR = [0.0, Math.PI / 2, 0.0];
+	var offset = [0.0, 0.0, 0.0];
+	var finalYaw = 0.0; var finalPitch = 0.0; var finalRoll = 0.0;
+	var radtodeg = 180 / Math.PI;
+	var currentScreenOrientation = getScreenOrientationAngle(90);
+	/* Keyboard variables */
+	var keyboardFlags = {
+		moveForward: false,
+		moveBackward: false,
+		moveUp: false,
+		moveDown: false,
+		moveLeft: false,
+		moveRight: false
+	};
+	/* debugging variables */
+	var debug = true;
+	debugDayNight = true; //from dayNight.js
+	var precision = 2;
+
+	/* Initialise Cesium */
+	/* Set default view based on timezone offset*/
+	/* Convert timezone offset to rough longtitude in radians */
+	var d = new Date();
+	var n = d.getTimezoneOffset();
+	var longtitude = -Cesium.Math.convertLongitudeRange((n / 60 * 2 * Math.PI / 24));
+	/* Initialise Cesium's starting camera view rectangle: West, South, East, North*/
+	var extent = new Cesium.Rectangle(Cesium.Math.convertLongitudeRange(longtitude - Cesium.Math.PI_OVER_TWO),
+		-Cesium.Math.PI_OVER_TWO,
+		Cesium.Math.convertLongitudeRange(longtitude + Cesium.Math.PI_OVER_TWO),
+		Cesium.Math.PI_OVER_TWO);
+	Cesium.Camera.DEFAULT_VIEW_RECTANGLE = extent;
+	Cesium.Camera.DEFAULT_VIEW_FACTOR = 0;
+
+	/*Initialise Keys and Tokens*/
+	//Cesium.BingMapsApi.defaultKey = globalBingMapsApiDefaultKey; //defined in accounts.js
+	Cesium.Ion.defaultAccessToken = globalCesiumIonDefaultAccessToken; //defined in accounts.js
+
+	try {
+		var viewer = new Cesium.Viewer('cesiumContainer', {
+			terrainProvider: Cesium.createWorldTerrain(), // use the Cesium World Terrain from ion
+			animation: true,
+			timeline: true,
+			shouldAnimate: true,
+			scene3DOnly: true,
+			navigationHelpButton: false,
+			sceneModePicker: false,
+			vrButton: true
+		});
+	} catch (error) {
+		document.body.innerHTML = "<h1>Sorry, your flight has been delayed</h1> <div> Try a different browser or device with WebGL support. </div> <div>" + error + "</div>";
+	}
+	var scene = viewer.scene;
+	var canvas = viewer.canvas;
+	canvas.setAttribute('tabindex', '0'); // needed to put focus on the canvas
+	canvas.onclick = function () {
+		canvas.focus();
+	};
+
+	/* initialise graphics settings */
+	scene.globe.showWaterEffect = false;
+	scene.globe.enableLighting = true;
+
+	/* Set variable offset in radians by simply copying the rotated orientation */
+	function setOffset() {
+		offset = [rotatedYPR[0], rotatedYPR[1], rotatedYPR[2]];
+		if (debug) {
+			$('#offsetYaw').html((offset[0] * radtodeg).toFixed(precision));
+			$('#offsetPitch').html((offset[1] * radtodeg).toFixed(precision));
+			$('#offsetRoll').html((offset[2] * radtodeg).toFixed(precision));
+		}
+	}
+
+	/* normalise angle to [-Math.PI .. Math.PI] radians */
+	function normalise(angle) {
+		return Cesium.Math.convertLongitudeRange(angle);
+	}
+
+	/* read device orientation data into variables */
+	var args = {
+		frequency: 100,                   // ( How often the object sends the values - milliseconds )
+		gravityNormalized: true,         // ( If the gravity related values to be normalized )
+		orientationBase: GyroNorm.GAME,      // ( Can be GyroNorm.GAME or GyroNorm.WORLD. gn.GAME returns orientation values with respect to the head direction of the device. gn.WORLD returns the orientation values with respect to the actual north direction of the world. )
+		decimalCount: 2,                 // ( How many digits after the decimal point will there be in the return values )
+		logger: null,                    // ( Function to be called to log messages from gyronorm.js )
+		screenAdjusted: false            // ( If set to true it will return screen adjusted values. )
+	};
+	var gn = new GyroNorm();
+	function dumpRawYPR() {
+		if (debug) {
+			$('#yaw').html(alpha.toFixed(precision));
+			$('#pitch').html(beta.toFixed(precision));
+			$('#roll').html(gamma.toFixed(precision));
+		}
+	}
+	gn.init(args).then(function () {
+		gn.start(function (data) {
+			alpha = data.do.alpha;
+			beta = data.do.beta;
+			gamma = data.do.gamma;
+			dumpRawYPR();
+		});
+	}).catch(function (e) {
+		// Catch if the DeviceOrientation or DeviceMotion is not supported by the browser or device
+		$('#error').html(e + ", trying direct call.");
+		window.ondeviceorientation = function (event) {
+			deviceOrientationData = event;
+			alpha = deviceOrientationData.alpha;
+			beta = deviceOrientationData.beta;
+			gamma = deviceOrientationData.gamma;
+			dumpRawYPR();
+		}
+	});
+
+	/* Day/Night Initialise*/
+	var imageryLayers = viewer.scene.imageryLayers;
+	var blackMarble = viewer.imageryLayers.addImageryProvider(
+		new Cesium.IonImageryProvider({ assetId: 3812 })
+	);
+
+	/* Create cloud layer */
+	var cloudEllipsoid = createCloudEllipsoid(viewer); //from cloudEllipsoid.js
+
+	/* Create OsmBuildings */
+	var osmBuildings = viewer.scene.primitives.add(Cesium.createOsmBuildings());
+
+	viewer.clock.onTick.addEventListener(function (clock) {
+		var camera = viewer.camera;
+		const cameraHeightMax = 25000000;
+		var cameraHeight = camera.positionCartographic.height;
+
+		//Check maximum height and bounce camera position if necessary
+		//Code modified from: https://www.programmersought.com/article/55093165838/
+		if (cameraHeight > cameraHeightMax) {
+			camera.setView({
+				destination: Cesium.Cartesian3.fromRadians(camera.positionCartographic.longitude, camera.positionCartographic.latitude, cameraHeightMax*0.9),
+				orientation: {
+                	direction: viewer.camera.direction,
+                	up: viewer.camera.up,
+            	}
+			});
+		}
+
+		var rotationMatrix = computeMatrix(alpha, beta, gamma, currentScreenOrientation);
+		rotatedYPR = getYawPitchRoll(rotationMatrix);
+		if (debug) {
+			$('#rotatedYaw').html((rotatedYPR[0] * radtodeg).toFixed(precision));
+			$('#rotatedPitch').html((rotatedYPR[1] * radtodeg).toFixed(precision));
+			$('#rotatedRoll').html((rotatedYPR[2] * radtodeg).toFixed(precision));
+		}
+		if (rotatedYPR) {
+			finalYaw = normalise(rotatedYPR[0] - offset[0]);
+			finalPitch = normalise(rotatedYPR[1] - offset[1]);
+			finalRoll = normalise(rotatedYPR[2] - offset[2]);
+		}
+		var sensitivity = $('#sensitivity').val();
+		var deadzone = 0.0 //controller dead zone (degrees)
+
+		if (Math.abs(finalYaw) > deadzone / radtodeg) {
+			var reverseYaw = $('#reverseYaw').prop('checked') ? -1.0 : 1.0;
+			if (debug) {$('#finalYaw').html((finalYaw * radtodeg * reverseYaw).toFixed(precision));}
+			camera.lookLeft(finalYaw * reverseYaw / 1000 * sensitivity * sensitivity);
+		}
+
+		if (Math.abs(finalPitch) > deadzone / radtodeg) {
+			var reversePitch = $('#reversePitch').prop('checked') ? -1.0 : 1.0;
+			if (debug) {$('#finalPitch').html((finalPitch * radtodeg * reversePitch).toFixed(precision));}
+			camera.lookUp(finalPitch * reversePitch / 1000 * sensitivity * sensitivity);
+		}
+
+		if (Math.abs(finalRoll) > deadzone / radtodeg) {
+			var reverseRoll = $('#reverseRoll').prop('checked') ? -1.0 : 1.0;
+			if (debug) {$('#finalRoll').html((finalRoll * radtodeg * reverseRoll).toFixed(precision));}
+			camera.twistRight(finalRoll * reverseRoll / 1000 * sensitivity * sensitivity);
+		}
+
+		// Change movement speed based on the distance of the camera to the surface of the ellipsoid.
+		// Math.abs is used so that we can capture negative values.
+		var moveRate = cameraHeight / 1000 * Math.abs($('#moveForward').val()) * $('#moveForward').val();
+		camera.moveForward(moveRate);
+		/*Keyboard movement*/
+		var moveRateKeyboard = cameraHeight / 50;
+		if (keyboardFlags.moveForward) {
+			camera.moveForward(moveRateKeyboard);
+		}
+		if (keyboardFlags.moveBackward) {
+			camera.moveBackward(moveRateKeyboard);
+		}
+		if (keyboardFlags.moveUp) {
+			camera.moveUp(moveRateKeyboard);
+		}
+		if (keyboardFlags.moveDown) {
+			camera.moveDown(moveRateKeyboard);
+		}
+		if (keyboardFlags.moveLeft) {
+			camera.moveLeft(moveRateKeyboard);
+		}
+		if (keyboardFlags.moveRight) {
+			camera.moveRight(moveRateKeyboard);
+		}
+
+		/* Day/Night functions */
+		blackMarble.alpha = getNightLayerAlpha(clock); //from dayNight.js
+
+
+	});
+	//Clock Tick Loop End
+
+	/*Screen orientation functions*/
+	function getScreenOrientationAngle(defaultangle) {
+		if (!isNaN(window.orientation)) {
+			return window.orientation; //non-standard, for Safari and some Android
+		} else if (!isNaN(screen.orientation.angle)) {
+			return screen.orientation.angle; //W3C standard
+		} else {
+			return defaultangle; //default.
+		}
+	}
+
+	function setScreenOrientation() {
+		currentScreenOrientation = getScreenOrientationAngle(90);
+		$("#screenOrientation").text(currentScreenOrientation);
+		setOffset();
+	}
+
+	//Center the controls if the screen is rotated.
+	window.addEventListener("orientationchange", function (e) {
+		setScreenOrientation(); //No idea why calling setScreenOrientation twice works. It just does.
+		setTimeout(setScreenOrientation, 500);
+	});
+
+	/* Keyboard functions */
+	function getFlagForKeyCode(keyCode) {
+		switch (keyCode) {
+			case 'W'.charCodeAt(0):
+				return 'moveForward';
+			case 38: //up arrow
+				return 'moveForward';
+			case 'S'.charCodeAt(0):
+				return 'moveBackward';
+			case 40: //down arrow
+				return 'moveBackward';
+			case 16: //shift
+				return 'moveUp';
+			case 17: //ctrl
+				return 'moveDown';
+			case 'D'.charCodeAt(0):
+				return 'moveRight';
+			case 39: //right arrow
+				return 'moveRight';
+			case 'A'.charCodeAt(0):
+				return 'moveLeft';
+			case 37:
+				return 'moveLeft';
+			case 'C'.charCodeAt(0):
+				setScreenOrientation();
+				return undefined;
+			case 35: //end key
+				setScreenOrientation();
+				return undefined;
+			case 'Z'.charCodeAt(0):
+				scene.camera.flyHome();
+				return undefined;
+			case 36: //home key
+				scene.camera.flyHome();
+				return undefined;
+			default: //left arrow
+				return undefined;
+		}
+	}
+	document.addEventListener('keydown', function (e) {
+		var flagName = getFlagForKeyCode(e.keyCode);
+		if (typeof flagName !== 'undefined') {
+			$('#moveControls').hide(); //hide controls while moving
+			keyboardFlags[flagName] = true;
+		}
+	}, false);
+	document.addEventListener('keyup', function (e) {
+		var flagName = getFlagForKeyCode(e.keyCode);
+		if (typeof flagName !== 'undefined') {
+			$('#moveControls').show(); //show controls after moving
+			keyboardFlags[flagName] = false;
+		}
+	}, false);
+
+	/*Display functions */
+	/* enableLighting makes the globe too dark. Adjust gamma and brightness of all layers */
+	function adjustLighting(value) {
+		for (i = 0; i < imageryLayers.length; i++) {
+			imageryLayers.get(i).gamma = value;
+			imageryLayers.get(i).brightness = value;
+		}
+	}
+
+	function toggleSettings() {
+		var settings = $('#settings');
+		settings.fadeToggle();
+	}
+
+	function toggleCloudEllipsoid() {
+		var showCloudEllipsoid = $('#toggleCloudEllipsoid').prop('checked');
+		cloudEllipsoid.show = showCloudEllipsoid;
+		if (showCloudEllipsoid == false) {
+			 cloudEllipsoid.orientation = computeCloudOrientation();
+			 //update cloud while visible is buggy - https://github.com/CesiumGS/cesium/issues/9601.
+		}
+	}
+
+	function toggleOsmBuildings() {
+		var showOsmBuildings = $('#toggleOsmBuildings').prop('checked');
+		osmBuildings.show = showOsmBuildings;
+	}
+	
+	function toggleDebug() {
+		debugContainer = $('#debug');
+		debugContainer.toggle();
+	}
+	
+	function toggleDayNight() {
+		var showDayNight = $('#toggleDayNight').prop('checked');
+		blackMarble.show = showDayNight ? true : false;
+		scene.globe.enableLighting = showDayNight ? true : false;
+		if (showDayNight) {
+			adjustLighting(1.25);
+		} else {
+			adjustLighting(1);
+		}
+	}
+
+	function toggleTimeControl() {
+		animationContainer = $('.cesium-viewer-animationContainer');
+		animationContainer.fadeToggle();
+
+		timelineContainer = $('.cesium-viewer-timelineContainer');
+		timelineContainer.fadeToggle();
+	}
+
+	var helper = new Cesium.EventHelper();
+	helper.add(viewer.scene.globe.tileLoadProgressEvent, function (event) {
+		//console.log("Tiles to load: " + event);
+		$("#loading-overlay").html((100 - event) + '%');
+		if (event == 0) { //Tiles loaded. Time to Initialise.
+			toggleTimeControl();
+			toggleDayNight();
+			$("#loading-overlay").hide();
+			helper.removeAll();
+			viewer.camera.flyHome();
+			setTimeout(setScreenOrientation, 1000);
+		}
+	});
+</script>
+</html>

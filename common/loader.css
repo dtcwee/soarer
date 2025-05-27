@@ -1,0 +1,20 @@
+/*
+.cesium-widget-credits {
+	display: none !important;
+}
+*/
+#loading-overlay {
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	bottom: 0px;
+	right: 0px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+	z-index: 99;
+	background: rgba(0,0,0,0.9) url("../common/loader.gif") no-repeat;
+	background-position: center;
+	opacity: 0.9;
+}

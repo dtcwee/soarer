@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Soarer</title>
+  <!-- Use correct character set. -->
+  <meta charset="utf-8">
+  <!-- Tell IE to use the latest, best version. -->
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <!-- Make the application on mobile take up the full browser screen and disable user scaling. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+<style>
+@import url(https://fonts.googleapis.com/icon?family=Material+Icons);
+@import url(../../Build/Cesium/Widgets/widgets.css);
+@import url(./bucket.css);
+@import url(../loader.css);
+</style>
+<script type="text/javascript" src="./rotationmatrix.js"></script>
+<script type="text/javascript" src="./gyronorm.js/dist/gyronorm.complete.min.js"></script>
+<script src="../../Build/Cesium/Cesium.js"></script>
+<script src="https://ajax.aspnetcdn.com/ajax/jQuery/jquery-3.2.1.min.js"></script>
+</head>
+<body>
+	<div id="cesiumContainer" class="fullSize"></div>
+	<div id="loading-overlay"></div>
+	<div id="toolbar">
+		<i class="material-icons cesium-button" onclick="toggleDisplayById('settings');">settings</i>
+		<a href="https://mobileflightapp.wordpress.com/about/" style="color:inherit;"><i class="material-icons">help share</i></a>
+		<div id='debug' style="display:none">
+		Screen Orientation: <span id='screenOrientation'> </span> 
+		<table>
+			<tr> <td> Orientation </td> <td> Raw </td> <td> Rotated </td> <td> Offset </td> <td> Final </td></tr>
+			<TR> <td> Yaw/&alpha;/Z: </td> <td> <span id='yaw'> </span> </td> <td> <span id='rotatedYaw'> </span> </td> <td> <span id='offsetYaw'> </span> </td> <td> <span id='finalYaw'> </span> </td> </tr>				
+			<TR> <td> Pitch/&beta;/X: </td> <td> <span id='pitch'> </span> </td> <td> <span id='rotatedPitch'> </span> </td> <td> <span id='offsetPitch'> </span> </td> <td> <span id='finalPitch'> </span> </td></tr>
+			<TR><td> Roll/&gamma;/Y: </td> <td> <span id='roll'> </span> </td> <td> <span id='rotatedRoll'> </span> </td> <td> <span id='offsetRoll'> </span> </td> <td> <span id='finalRoll'> </span> </td></tr>
+		</table>
+		<div>
+		Pos: <span id = 'cameraLongitude'> </span>&deg;E, <span id = 'cameraLatitude'></span>&deg;N, Night: <span id="overlayAlpha"> </span></br>
+		Local Time: <span id="localTime"> </span>, Hour angle: <span id="hourAngle"></span>&deg; </br>
+		Sun Declination: <span id="sunDeclination"></span>&deg;, Sol. Elevation: <span id="solarElevation"></span>&deg;
+		</div>
+		<span id="error" style="color:#FF0000"> </span>
+		</div>
+		<div id='settings'>
+			<label for='reverseYaw'><i class="material-icons">swap_horiz</i></label>
+			<input type="checkbox" id="reverseYaw" value="false"/> 
+			<label for='reversePitch'><i class="material-icons">swap_vert</i></label>
+			<input type="checkbox" id="reversePitch" value="false"/>
+			<label for='reverseRoll'><i class="material-icons">screen_rotation</i></label>		
+			<input type="checkbox" id="reverseRoll" value="false"/> 
+			<br/>
+			<i class="material-icons" onclick="document.getElementById('sensitivity').stepDown(1);">volume_off</i>
+			<input type="range" id="sensitivity" min="0" max="10" value='4' step='1'/>
+			<i class="material-icons" onclick="document.getElementById('sensitivity').stepUp(1);">volume_up</i>
+			</br>
+			<label for='toggleDayNight'><i class="material-icons">brightness_medium</i></label>
+			<input type='checkbox' id='toggleDayNight' onchange='toggleDayNight();' checked/>
+			<label for='toggleTimeControl'><i class="material-icons">access_time</i></label>
+			<input type='checkbox' id='toggleTimeControl' onchange='toggleTimeControl();' />
+			<br/>
+			<label for='toggleAtmosphere'><i class="material-icons">cloud</i></label>
+			<input type='checkbox' id='toggleAtmosphere' onchange='toggleAtmosphere();' checked/>
+			<label for='toggleDebug'><i class="material-icons">bug_report</i></label>
+			<input type='checkbox' id='toggleDebug' onchange='toggleDebug();'/>
+		</div>
+		<span id = "oldAndroidChromeAntiFlicker"></span>
+		<br>
+		<i class="material-icons cesium-button" id='calibrate' onclick="setScreenOrientation();">adjust</i>
+	</div>
+	<div id = 'controls'>
+	<table id="moveForwardTable"> <tr> <td> 
+	<i class="material-icons" onclick="document.getElementById('moveForward').stepDown(1);">fast_rewind</i> 
+	</td> <td>
+	<input type='range' id='moveForward' min='-5' max='5' value='0.0' step='1'/>
+	</td> <td>
+	<i class="material-icons" onclick="document.getElementById('moveForward').stepUp(1);">fast_forward</i>
+	</td> </tr> </table>
+	</div>
+</body>
+<script type="text/javascript">
+//Load device orientation into variables.
+var deviceOrientationData = null;
+var alpha = 0.0; var beta = 0.0; var gamma = 0.0;
+var rotatedYPR = [0.0,Math.PI/2,0.0];
+var offset = [0.0,0.0,0.0];
+var finalYaw = 0.0; var finalPitch = 0.0; var finalRoll = 0.0;
+var radtodeg = 180 / Math.PI;
+var currentScreenOrientation = getScreenOrientationAngle(90);
+/* Keyboard variables */
+var keyboardFlags = {
+    moveForward : false,
+    moveBackward : false,
+    moveUp : false,
+    moveDown : false,
+    moveLeft : false,
+    moveRight : false
+};
+/* debugging variables */
+var debug = false;
+var precision = 2;
+
+/* Initialise Cesium */
+/* Set default view based on timezone offset*/
+/* Convert timezone offset to rough longtitude in radians */
+var d = new Date();
+var n = d.getTimezoneOffset();
+var longtitude = -Cesium.Math.convertLongitudeRange((n/60 * 2*Math.PI/24));
+/* Initialise Cesium's starting camera view rectangle: West, South, East, North*/
+var extent = new Cesium.Rectangle(Cesium.Math.convertLongitudeRange(longtitude - Cesium.Math.PI_OVER_TWO),
+	-Cesium.Math.PI_OVER_TWO,
+	Cesium.Math.convertLongitudeRange(longtitude + Cesium.Math.PI_OVER_TWO),
+	Cesium.Math.PI_OVER_TWO);			
+Cesium.Camera.DEFAULT_VIEW_RECTANGLE = extent;
+Cesium.Camera.DEFAULT_VIEW_FACTOR = 0;
+Cesium.BingMapsApi.defaultKey = 'AiX8p3EuD3mBnAmAL7GB6nkupA98QgfclryjF6EGeDb-Jxy55TuFpjsOa4uSGNe2'
+
+try {
+	var viewer = new Cesium.Viewer('cesiumContainer', {
+			animation : true,
+			timeline : true,
+			scene3DOnly : true,
+			navigationHelpButton : false,
+			sceneModePicker : false,
+			vrButton : true
+		});
+} catch (error) {
+	document.body.innerHTML = "<h1>Sorry, your flight has been delayed</h1> <div> Try a different browser or device (with better WebGL support) </div> <div>" + error + "</div>";
+}
+var scene = viewer.scene;
+var canvas = viewer.canvas;
+canvas.setAttribute('tabindex', '0'); // needed to put focus on the canvas
+canvas.onclick = function() {
+    canvas.focus();
+};
+
+/* initialise graphics settings */
+scene.globe.showWaterEffect = false;
+scene.globe.enableLighting = true;
+
+/* Set variable offset in radians */
+function setOffset() {
+	offset = [rotatedYPR[0], rotatedYPR[1], rotatedYPR[2]];
+	if (debug) {
+		document.getElementById("offsetYaw").innerHTML = (offset[0] * radtodeg).toFixed(precision);
+		document.getElementById("offsetPitch").innerHTML = (offset[1] * radtodeg).toFixed(precision);
+		document.getElementById("offsetRoll").innerHTML = (offset[2] * radtodeg).toFixed(precision);
+		}
+}
+
+/* normalise angle to [-Math.PI .. Math.PI] radians */
+function normalise(angle) {
+return Cesium.Math.convertLongitudeRange(angle);
+}
+
+/* read device orientation data into variables */
+var args = {
+    frequency:100,                   // ( How often the object sends the values - milliseconds )
+    gravityNormalized:true,         // ( If the gravity related values to be normalized )
+    orientationBase:GyroNorm.GAME,      // ( Can be GyroNorm.GAME or GyroNorm.WORLD. gn.GAME returns orientation values with respect to the head direction of the device. gn.WORLD returns the orientation values with respect to the actual north direction of the world. )
+    decimalCount:2,                 // ( How many digits after the decimal point will there be in the return values )
+    logger:null,                    // ( Function to be called to log messages from gyronorm.js )
+    screenAdjusted:false            // ( If set to true it will return screen adjusted values. )
+};
+var gn = new GyroNorm();
+function dumpRawYPR() {
+	if (debug) {
+		document.getElementById("yaw").innerHTML = alpha ? alpha.toFixed(precision) : 0.0;
+		document.getElementById("pitch").innerHTML = beta ? beta.toFixed(precision) : 0.0;
+		document.getElementById("roll").innerHTML = gamma ? gamma.toFixed(precision) : 0.0;
+	}
+}
+gn.init(args).then(function(){
+        gn.start(function(data){
+			alpha = data.do.alpha;
+			beta = data.do.beta;
+			gamma = data.do.gamma;
+			dumpRawYPR();
+        });
+    }).catch(function(e){
+      // Catch if the DeviceOrientation or DeviceMotion is not supported by the browser or device
+	  document.getElementById('error').innerHTML = e + ", trying direct call.";
+		window.ondeviceorientation = function(event) {
+		deviceOrientationData = event;
+		alpha = deviceOrientationData.alpha;
+		beta = deviceOrientationData.beta;
+		gamma = deviceOrientationData.gamma;
+		dumpRawYPR();
+		}	  
+    });
+
+/* Day/Night Initialise*/
+var imageryLayers = viewer.scene.imageryLayers;
+var blackMarble = imageryLayers.addImageryProvider(Cesium.createTileMapServiceImageryProvider({
+    url : 'https://cesiumjs.org/tilesets/imagery/blackmarble',
+    defaultBrightness: 1.0,
+    defaultGamma: 1.0,
+    maximumLevel : 8,
+    credit : 'Black Marble imagery courtesy NASA Earth Observatory',
+    flipXY : true // Only old gdal2tile.py generated tilesets need this flag.
+}));
+	
+viewer.clock.onTick.addEventListener(function (clock) {
+var camera = viewer.camera;
+
+	var rotationMatrix = computeMatrix(alpha, beta, gamma, currentScreenOrientation);
+	rotatedYPR = getYawPitchRoll(rotationMatrix);
+	if (debug) {
+		document.getElementById("rotatedYaw").innerHTML = (rotatedYPR[0] * radtodeg).toFixed(precision);
+		document.getElementById("rotatedPitch").innerHTML = (rotatedYPR[1] * radtodeg).toFixed(precision);
+		document.getElementById("rotatedRoll").innerHTML = (rotatedYPR[2] * radtodeg).toFixed(precision);
+		}
+	if (rotatedYPR) {
+	finalYaw = normalise(rotatedYPR[0] - offset[0]);
+	finalPitch = normalise(rotatedYPR[1] - offset[1]);
+	finalRoll = normalise(rotatedYPR[2] - offset[2]);
+		if (debug) {
+			document.getElementById("finalYaw").innerHTML = (finalYaw * radtodeg).toFixed(precision);
+			document.getElementById("finalPitch").innerHTML = (finalPitch * radtodeg).toFixed(precision);
+			document.getElementById("finalRoll").innerHTML = (finalRoll * radtodeg).toFixed(precision);
+			}
+	}
+var sensitivity = document.getElementById("sensitivity").value;
+var deadzone = 0.0 //controller dead zone (degrees)
+
+if (Math.abs(finalYaw) > deadzone / radtodeg) {
+var reverseYaw = document.getElementById("reverseYaw").checked ? -1.0 : 1.0;
+camera.lookLeft(finalYaw * reverseYaw / 1000 * sensitivity*sensitivity);
+}
+
+if (Math.abs(finalPitch) > deadzone / radtodeg) {
+var reversePitch = document.getElementById("reversePitch").checked ? -1.0 : 1.0;
+camera.lookUp(finalPitch * reversePitch / 1000 * sensitivity*sensitivity);
+}
+	
+if (Math.abs(finalRoll) > deadzone / radtodeg) {
+var reverseRoll = document.getElementById("reverseRoll").checked ? -1.0 : 1.0;
+camera.twistRight(finalRoll * reverseRoll / 1000 * sensitivity*sensitivity);
+}
+
+// Change movement speed based on the distance of the camera to the surface of the ellipsoid.
+var cameraHeight = scene.globe.ellipsoid.cartesianToCartographic(camera.position).height;
+var moveRate = cameraHeight / 1000 * Math.abs(document.getElementById("moveForward").value) * document.getElementById("moveForward").value;
+camera.moveForward(moveRate);
+/*Keyboard movement*/
+var moveRateKeyboard = cameraHeight / 50;
+if (keyboardFlags.moveForward) {
+	camera.moveForward(moveRateKeyboard);
+}
+if (keyboardFlags.moveBackward) {
+	camera.moveBackward(moveRateKeyboard);
+}
+if (keyboardFlags.moveUp) {
+	camera.moveUp(moveRateKeyboard);
+}
+if (keyboardFlags.moveDown) {
+	camera.moveDown(moveRateKeyboard);
+}
+if (keyboardFlags.moveLeft) {
+	camera.moveLeft(moveRateKeyboard);
+}
+if (keyboardFlags.moveRight) {
+	camera.moveRight(moveRateKeyboard);
+}
+/* Day/Night functions */
+if (document.getElementById('toggleDayNight').checked) {
+	var cameraLatitude = viewer.camera.positionCartographic.latitude;
+	var cameraLongitude = viewer.camera.positionCartographic.longitude;
+	$("#cameraLatitude").text(debug ? (cameraLatitude * Cesium.Math.DEGREES_PER_RADIAN).toFixed(2) : '');
+	$("#cameraLongitude").text(debug ? (cameraLongitude * Cesium.Math.DEGREES_PER_RADIAN).toFixed(2) : '');
+	//Calculate Local Time
+	var secondsOffset = cameraLongitude * 12 * 60 * 60 / Math.PI;
+	var localJulianDate = new Cesium.JulianDate();
+	Cesium.JulianDate.addSeconds(clock.currentTime, secondsOffset, localJulianDate);
+	var localGregorianDate = new Cesium.JulianDate.toGregorianDate(localJulianDate);
+	$("#localTime").text(debug ? (localGregorianDate.hour + ":" + localGregorianDate.minute + ":" + localGregorianDate.second) : '');
+	//Calculate Sun Declination
+	var sunDeclination = Cesium.Math.clampToLatitudeRange(
+						Cesium.Math.PI_OVER_TWO 
+						- Cesium.Spherical.fromCartesian3(
+							Cesium.Simon1994PlanetaryPositions.computeSunPositionInEarthInertialFrame(localJulianDate)
+							).cone
+						);
+	$("#sunDeclination").text(debug ? Cesium.Math.toDegrees(sunDeclination).toFixed(2):'');
+	//Calculate Hour, Solar Angles
+	var hourAngle = (localJulianDate.secondsOfDay / (12 * 60 * 60) * Math.PI);
+	$("#hourAngle").text(debug ? Cesium.Math.toDegrees(hourAngle).toFixed(2): '');
+	var cosSolarZenithAngle = Math.sin(cameraLatitude) * Math.sin(sunDeclination) 
+				+ Math.cos(cameraLatitude) * Math.cos(sunDeclination) * Math.cos(hourAngle);
+	var solarElevation = Math.asin(cosSolarZenithAngle);
+	$("#solarElevation").text(debug ? Cesium.Math.toDegrees(solarElevation).toFixed(2): '');
+	//var overlayAlpha = 0.5 * Math.cos((localJulianDate.secondsOfDay / (12 * 60 * 60) * Math.PI) - Math.PI) + 0.5;
+	var overlayAlpha = 0.5 * -cosSolarZenithAngle + 0.5;
+	$("#overlayAlpha").text( debug ? overlayAlpha.toFixed(precision) : '');
+	blackMarble.alpha = overlayAlpha;
+}
+/*Need to change text to avoid flicker*/
+$("#oldAndroidChromeAntiFlicker").text(" ");
+});
+
+/*Screen orientation functions*/
+function getScreenOrientationAngle(defaultangle) {
+	if (!isNaN(window.orientation)) {
+		return window.orientation; //non-standard, for Safari and some Android
+	} else if (!isNaN(screen.orientation.angle)) {
+		return screen.orientation.angle; //W3C standard
+	} else {
+		return defaultangle; //default.
+	}
+}
+
+function setScreenOrientation() {
+	currentScreenOrientation = getScreenOrientationAngle(90);
+	setOffset();
+    document.getElementById('screenOrientation').innerHTML = currentScreenOrientation;
+}
+
+window.addEventListener("orientationchange", setScreenOrientation, true);
+
+/* Keyboard functions */
+function getFlagForKeyCode(keyCode) {
+    switch (keyCode) {
+    case 'W'.charCodeAt(0):
+        return 'moveForward';
+	case 38: //up arrow
+        return 'moveForward';
+    case 'S'.charCodeAt(0):
+        return 'moveBackward';
+	case 40: //down arrow
+        return 'moveBackward';
+    case 16: //shift
+        return 'moveUp';
+    case 17: //ctrl
+        return 'moveDown';
+    case 'D'.charCodeAt(0):
+        return 'moveRight';
+    case 39: //right arrow
+        return 'moveRight';
+	case 'A'.charCodeAt(0):
+        return 'moveLeft';
+	case 37:
+        return 'moveLeft';
+	case 'C'.charCodeAt(0):
+		setScreenOrientation();
+        return undefined;
+	case 35: //end key
+		setScreenOrientation();
+        return undefined;
+	case 'Z'.charCodeAt(0):
+		scene.camera.flyHome();
+        return undefined;
+	case 36: //home key
+		scene.camera.flyHome();
+        return undefined;
+	default: //left arrow
+        return undefined;
+    }
+}
+document.addEventListener('keydown', function(e) {
+    var flagName = getFlagForKeyCode(e.keyCode);
+    if (typeof flagName !== 'undefined') {
+		document.getElementById('controls').style.display='none'; //hide controls
+        keyboardFlags[flagName] = true;
+		}
+}, false);
+document.addEventListener('keyup', function(e) {
+    var flagName = getFlagForKeyCode(e.keyCode);
+    if (typeof flagName !== 'undefined') {
+		document.getElementById('controls').style.display='inline'; //hide controls
+		keyboardFlags[flagName] = false;
+    }
+}, false);
+
+/*Display functions */
+/* enableLighting makes the globe too dark. Adjust gamma and brightness of all layers */
+function adjustLighting(value) {
+	for (i = 0; i < imageryLayers.length; i++) {
+		imageryLayers.get(i).gamma = value;
+		imageryLayers.get(i).brightness = value;
+	}
+}
+
+function toggleDisplayById(id) {
+	element = document.getElementById(id);
+	element.style.display = element.style.display == 'none' ? 'block' : 'none';
+}
+
+function toggleDebug(){
+debug = document.getElementById('toggleDebug').checked;
+document.getElementById('debug').style.display = debug ? 'inline' : 'none';
+}
+
+function toggleAtmosphere() {
+var atmosphere = document.getElementById('toggleAtmosphere').checked;
+scene.skyAtmosphere.show = atmosphere ? true : false;
+scene.globe.enableLighting = atmosphere ? true : false;
+}
+
+function toggleDayNight() {
+	var showDayNight = document.getElementById('toggleDayNight').checked;
+	blackMarble.show = showDayNight ? true : false;
+	if (showDayNight) {
+		adjustLighting(1.25);
+	} else {
+		adjustLighting(1);
+	}
+}
+
+function toggleTimeControl() {
+var timeControl = document.getElementById('toggleTimeControl').checked;
+animationContainer = document.getElementsByClassName('cesium-viewer-animationContainer');
+    for (var i = 0; i < animationContainer.length; i++) {
+        animationContainer[i].style.display = timeControl ? 'inline' : 'none';
+    }
+timelineContainer = document.getElementsByClassName('cesium-viewer-timelineContainer');
+    for (var i = 0; i < timelineContainer.length; i++) {
+        timelineContainer[i].style.display = timeControl ? 'inline' : 'none';
+    }
+}
+
+var helper = new Cesium.EventHelper();
+helper.add(viewer.scene.globe.tileLoadProgressEvent, function (event) {
+//console.log("Tiles to load: " + event);
+		document.getElementById("loading-overlay").innerHTML = (100 - event) + '%';
+	if (event == 0 ) { //Tiles loaded. Time to Initialise.
+		document.getElementById("loading-overlay").style.display = "none";
+		document.getElementById("loading-overlay").style.zIndex = "-99";
+		setScreenOrientation();
+		viewer.camera.flyHome();
+		toggleTimeControl();
+		toggleDayNight();
+		toggleDebug();
+		helper.removeAll();
+		}
+});
+
+/* Google Analytics */
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-84468708-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</html>
