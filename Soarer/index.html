@@ -16,7 +16,7 @@
 	<script src="https://ajax.aspnetcdn.com/ajax/jQuery/jquery-3.2.1.min.js"></script>
 	<script type="text/javascript" src="../common/accounts.js"></script>
 	<script type="text/javascript" src="../common/dayNight.js"></script>
-	<script type="text/javascript" src="../common/cloudEllipsoid.js"></script>
+	<script type="text/javascript" src="../common/cloudPrimitive.js"></script>
 
 	<style>
 		@import url(https://fonts.googleapis.com/icon?family=Material+Icons);
@@ -73,7 +73,7 @@
 			</div>
 			<span id="error" style="color:#FF0000"> </span>
 		</div>
-		<div id='settings'>
+		<div id='settings' style="display:none">
 			<fieldset style="white-space: nowrap;">
 				<legend>Flip Tilt Controls</legend>
 				<label for='reverseYaw'><i class="material-icons">swap_horiz</i></label>
@@ -86,14 +86,13 @@
 			<fieldset style="white-space: nowrap;">
 				<legend>Sensitivity</legend>
 				<i class="material-icons" onclick="document.getElementById('sensitivity').stepDown(1);">volume_off</i>
-				<input type="range" id="sensitivity" min="0" max="10" value='4' step='1' />
+				<input type="range" id="sensitivity" min="0" max="10" value='0' step='1' data-default='4' disabled />
 				<i class="material-icons" onclick="document.getElementById('sensitivity').stepUp(1);">volume_up</i>
 			</fieldset>
 			<fieldset>
 				<legend>Display</legend>
-			<label for='toggleCloudEllipsoid' title="Show Clouds"><i
-				class="material-icons">cloud</i>
-			<input type='checkbox' id='toggleCloudEllipsoid' onchange='toggleCloudEllipsoid();' checked /></label>
+			<label for='toggleCloud' title="Show Clouds"><i class="material-icons">cloud</i>
+			<input type='checkbox' id='toggleCloud' onchange='toggleCloud();' checked /></label>
 			<label for='toggleOsmBuildings' title="Show OSM Buildings"><i
 				class="material-icons">location_city</i>
 			<input type='checkbox' id='toggleOsmBuildings' onchange='toggleOsmBuildings();' checked /></label>
@@ -250,7 +249,7 @@
 	);
 
 	/* Create cloud layer */
-	var cloudEllipsoid = createCloudEllipsoid(viewer); //from cloudEllipsoid.js
+	var cloudPrimitive = createCloudPrimitive(viewer); //from cloudPrimitive.js
 
 	/* Create OsmBuildings */
 	var osmBuildings = viewer.scene.primitives.add(Cesium.createOsmBuildings());
@@ -284,7 +283,7 @@
 			finalPitch = normalise(rotatedYPR[1] - offset[1]);
 			finalRoll = normalise(rotatedYPR[2] - offset[2]);
 		}
-		var sensitivity = $('#sensitivity').val();
+		var sensitivity = parseFloat($('#sensitivity').val()) || 0;
 		var deadzone = 0.0 //controller dead zone (degrees)
 
 		if (Math.abs(finalYaw) > deadzone / radtodeg) {
@@ -352,6 +351,14 @@
 		currentScreenOrientation = getScreenOrientationAngle(90);
 		$("#screenOrientation").text(currentScreenOrientation);
 		setOffset();
+	}
+
+	/* Enable sensitivity slider after initial load + calibration */
+	function enableSensitivity() {
+		var s = $('#sensitivity');
+		var def = parseFloat(s.data('default')) || 4;
+		s.val(def);
+		s.prop('disabled', false);
 	}
 
 	//Center the controls if the screen is rotated.
@@ -428,13 +435,10 @@
 		settings.fadeToggle();
 	}
 
-	function toggleCloudEllipsoid() {
-		var showCloudEllipsoid = $('#toggleCloudEllipsoid').prop('checked');
-		cloudEllipsoid.show = showCloudEllipsoid;
-		if (showCloudEllipsoid == false) {
-			 cloudEllipsoid.orientation = computeCloudOrientation();
-			 //update cloud while visible is buggy - https://github.com/CesiumGS/cesium/issues/9601.
-		}
+	function toggleCloud() {
+		var showCloudPrimitive = $('#toggleCloud').prop('checked');
+		cloudPrimitive.show = showCloudPrimitive;
+		toggleCloudSettings();
 	}
 
 	function toggleOsmBuildings() {
@@ -476,7 +480,7 @@
 			$("#loading-overlay").hide();
 			helper.removeAll();
 			viewer.camera.flyHome();
-			setTimeout(setScreenOrientation, 1000);
+			setTimeout(function () { setScreenOrientation(); enableSensitivity(); }, 1000);
 		}
 	});
 </script>

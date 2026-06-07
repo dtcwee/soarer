@@ -17,7 +17,7 @@
 	<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
 	<script type="text/javascript" src="../common/accounts.js"></script>
 	<script type="text/javascript" src="../common/dayNight.js"></script>
-	<script type="text/javascript" src="../common/cloudRectangle.js"></script>
+	<script type="text/javascript" src="../common/cloudPrimitive.js"></script>
 
 	<style>
 		@import url(https://fonts.googleapis.com/icon?family=Material+Icons);
@@ -229,7 +229,7 @@
 	);
 
 	/* Create cloud layer */
-	var cloudObject = createCloudRectangle(viewer); //from cloudRectangle.js
+	var cloudPrimitive = createCloudPrimitive(viewer); //from cloudPrimitive.js
 
 	/* Create OsmBuildings */
 	var osmBuildings = viewer.scene.primitives.add(Cesium.createOsmBuildings());
@@ -310,8 +310,8 @@
 	}
 
 	function toggleCloud() {
-		var showCloudObject = $('#toggleCloud').prop('checked');
-		cloudObject.show = showCloudObject;
+		var showCloudPrimitive = $('#toggleCloud').prop('checked');
+		cloudPrimitive.show = showCloudPrimitive;
 		toggleCloudSettings();
 	}
 
@@ -322,12 +322,21 @@
 
 	function setCloudSpeed() {
 		var newCloudSpeed = $('#cloudSpeed').val();
-		cloudSpeed = newCloudSpeed;
+		if (typeof updateCloudSpeed === 'function') {
+			updateCloudSpeed(newCloudSpeed);
+		} else {
+			cloudSpeed = newCloudSpeed;
+		}
 	}
 
 	function setCloudAltitude() {
 		var newCloudAltitude = $('#cloudAltitude').val();
-		cloudAltitude = newCloudAltitude * 1000;
+		var meters = newCloudAltitude * 1000;
+		if (typeof updateCloudAltitude === 'function') {
+			updateCloudAltitude(meters);
+		} else {
+			cloudAltitude = meters;
+		}
 	}
 
 	function toggleOsmBuildings() {
