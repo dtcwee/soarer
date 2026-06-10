@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Soarer — Clouds Testbed</title>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.142/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <style>
+    html, body, #cesiumContainer { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+    #hud { position: absolute; left: 8px; top: 8px; background: rgba(0,0,0,0.4); color: white; padding: 8px; font-family: sans-serif; font-size: 13px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+  <div id="hud">Clouds: <span id="cloudCount">0</span> · Last spawn: <span id="lastSpawn">—</span>
+    <br>FPS: <span id="fps">—</span> · Throttle: <span id="throttle">—</span>ms · Reused: <span id="reuseCount">0</span>
+  </div>
+
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.142/Build/Cesium/Cesium.js"></script>
+  <script src="../common/accounts.js"></script>
+  <script src="../common/cloudPrimitive.js"></script>
+
+  <script>
+    // Basic Cesium viewer scaffold
+    Cesium.Ion.defaultAccessToken = typeof globalCesiumIonDefaultAccessToken !== 'undefined' ? globalCesiumIonDefaultAccessToken : '';
+
+    var viewer = new Cesium.Viewer('cesiumContainer', {
+      terrain: Cesium.Terrain.fromWorldTerrain(),
+      baseLayerPicker: true,
+      timeline: false,
+      animation: false
+    });
+
+    // add the static GPU-scrolling cloud primitive from common/cloudPrimitive.js
+    var staticCloudPrimitive = createCloudPrimitive(viewer);
+
+    // LOD helper: maps camera altitude (m) to [0..1] blend weight for LOD
+    function altitudeToLOD(altitudeMeters) {
+      // 0 @ 20km, 1 @ 100km
+      var a = (altitudeMeters - 20000) / (100000 - 20000);
+      return Math.max(0, Math.min(1, a));
+    }
+    // expose hook globally and on viewer for other modules
+    window.altitudeToLOD = altitudeToLOD;
+    viewer.altitudeToLOD = altitudeToLOD;
+
+    // CloudManager: handles a CloudCollection of 3D CumulusCloud instances
+    function CloudManager(viewer, options) {
+      options = options || {};
+      this.viewer = viewer;
+      this.maxClouds = options.maxClouds || 200;
+      this.spawnThrottleMs = options.spawnThrottleMs || 200; // how often to spawn (ms)
+      this.minAltitude = options.minAltitude || 500; // cloud altitude min
+      this.maxAltitude = options.maxAltitude || 9000; // cloud altitude max
+      this.cullDistance = options.cullDistance || 25000; // in meters (25km)
+      this.spawnWhenBelow = options.spawnWhenBelow || 100000; // camera altitude threshold to spawn (100km)
+
+      this.collection = new Cesium.CloudCollection();
+      this.viewer.scene.primitives.add(this.collection);
+
+      this.clouds = [];
+      this._lastSpawn = 0;
+      this.reuseCount = 0;
+      this._lastCameraPos = Cesium.Cartesian3.clone(viewer.camera.position);
+      this._minSpawnThrottle = options.minSpawnThrottleMs || 100;
+      this._maxSpawnThrottle = options.maxSpawnThrottleMs || 1000;
+      this._adaptiveThrottle = this.spawnThrottleMs; // current throttle, adapt by FPS
+    }
+
+    CloudManager.prototype.randomBetween = function(a,b) { return a + Math.random() * (b-a); };
+
+    CloudManager.prototype.spawnInView = function() {
+      var now = Date.now();
+      if (now - this._lastSpawn < this._adaptiveThrottle) return;
+      this._lastSpawn = now;
+
+      // Only spawn when camera is below threshold altitude
+      var carto = Cesium.Cartographic.fromCartesian(this.viewer.camera.position);
+      var cameraHeight = carto.height;
+      if (cameraHeight >= this.spawnWhenBelow) return;
+
+      // Compute view rectangle
+      var rect = this.viewer.camera.computeViewRectangle(this.viewer.scene.globe.ellipsoid);
+      if (!rect) return;
+
+      // spawn a small batch but cap total
+      var batch = 6;
+      for (var i = 0; i < batch && this.clouds.length < this.maxClouds; i++) {
+        var lonRad = this.randomBetween(rect.west, rect.east);
+        var latRad = this.randomBetween(rect.south, rect.north);
+        var lon = Cesium.Math.toDegrees(lonRad);
+        var lat = Cesium.Math.toDegrees(latRad);
+        var alt = this.randomBetween(this.minAltitude, this.maxAltitude);
+        var pos = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
+
+        // try to reuse an inactive cloud first
+        var reused = null;
+        for (var j = 0; j < this.clouds.length; j++) {
+          var c = this.clouds[j];
+          if (c && c.show === false) { reused = c; break; }
+        }
+        if (reused) {
+          reused.position = pos;
+          reused._position = pos;
+          reused.scale = this.randomBetween(0.6, 1.6);
+          reused.show = true;
+          this.reuseCount++;
+        } else {
+          // add to collection; set simple properties — the collection's add() returns a cloud primitive
+          var cloud = this.collection.add({ position: pos, show: true, scale: this.randomBetween(0.6, 1.6) });
+          // attach metadata so we can compute precise distances later
+          cloud._position = pos;
+          this.clouds.push(cloud);
+        }
+      }
+
+      // update HUD
+      document.getElementById('cloudCount').textContent = this.clouds.length;
+      document.getElementById('lastSpawn').textContent = (new Date()).toLocaleTimeString();
+      document.getElementById('reuseCount').textContent = this.reuseCount;
+    };
+
+    CloudManager.prototype.update = function() {
+      // Cull by distance
+      var camPos = this.viewer.camera.positionWC;
+      for (var i = 0; i < this.clouds.length; i++) {
+        var cloud = this.clouds[i];
+        if (!cloud || !cloud._position) continue;
+        var dist = Cesium.Cartesian3.distance(camPos, cloud._position);
+        // hide if beyond cull distance
+        cloud.show = (dist <= this.cullDistance);
+      }
+    };
+
+    CloudManager.prototype.adaptThrottle = function(fps) {
+      // simple adaptive throttle: lower spawn rate when FPS drops
+      if (fps < 20) {
+        this._adaptiveThrottle = Math.min(this._maxSpawnThrottle, this._adaptiveThrottle * 1.5);
+      } else if (fps < 35) {
+        this._adaptiveThrottle = Math.min(this._maxSpawnThrottle, this._adaptiveThrottle * 1.2);
+      } else if (fps > 50) {
+        this._adaptiveThrottle = Math.max(this._minSpawnThrottle, this._adaptiveThrottle * 0.8);
+      }
+      // clamp
+      this._adaptiveThrottle = Math.max(this._minSpawnThrottle, Math.min(this._maxSpawnThrottle, this._adaptiveThrottle));
+      document.getElementById('throttle').textContent = Math.round(this._adaptiveThrottle);
+    };
+
+    // instantiate manager
+    var cloudManager = new CloudManager(viewer, { maxClouds: 200, spawnThrottleMs: 300, cullDistance: 25000, spawnWhenBelow: 100000 });
+
+    // Pre-render loop: update static cloud alpha and handle spawning + culling
+    viewer.scene.preRender.addEventListener(function(scene, time) {
+      // update static cloud primitive alpha based on camera altitude
+      var carto = Cesium.Cartographic.fromCartesian(viewer.camera.position);
+      var h = carto.height;
+      // alpha = 0 @ 20km, 1 @ 100km, linear clamp
+      var alpha = (h - 20000) / (100000 - 20000);
+      alpha = Math.max(0, Math.min(1, alpha));
+      try {
+        if (staticCloudPrimitive && staticCloudPrimitive._cloudMaterial) {
+          staticCloudPrimitive._cloudMaterial.uniforms.alpha = alpha;
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      // spawn and update manager
+      cloudManager.spawnInView();
+      cloudManager.update();
+    });
+
+  </script>
+</body>
+</html>

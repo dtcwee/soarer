@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
 	<title>Soarer</title>
 	<!-- Use correct character set. -->
@@ -12,15 +11,15 @@
 		content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
 	<script type="text/javascript" src="./rotationmatrix.js"></script>
 	<script type="text/javascript" src="./gyronorm.js/dist/gyronorm.complete.min.js"></script>
-	<script src="https://cesium.com/downloads/cesiumjs/releases/1.76/Build/Cesium/Cesium.js"></script>
-	<script src="https://ajax.aspnetcdn.com/ajax/jQuery/jquery-3.2.1.min.js"></script>
+	<script src="https://cesium.com/downloads/cesiumjs/releases/1.142/Build/Cesium/Cesium.js"></script>
+	<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 	<script type="text/javascript" src="../common/accounts.js"></script>
 	<script type="text/javascript" src="../common/dayNight.js"></script>
 	<script type="text/javascript" src="../common/cloudPrimitive.js"></script>
 
 	<style>
 		@import url(https://fonts.googleapis.com/icon?family=Material+Icons);
-		@import url(https://cesium.com/downloads/cesiumjs/releases/1.76/Build/Cesium/Widgets/widgets.css);
+		@import url(https://cesium.com/downloads/cesiumjs/releases/1.142/Build/Cesium/Widgets/widgets.css);
 		@import url(./main.css);
 		@import url(../common/loader.css);
 	</style>
@@ -163,12 +162,11 @@
 	Cesium.Camera.DEFAULT_VIEW_FACTOR = 0;
 
 	/*Initialise Keys and Tokens*/
-	//Cesium.BingMapsApi.defaultKey = globalBingMapsApiDefaultKey; //defined in accounts.js
 	Cesium.Ion.defaultAccessToken = globalCesiumIonDefaultAccessToken; //defined in accounts.js
 
 	try {
 		var viewer = new Cesium.Viewer('cesiumContainer', {
-			terrainProvider: Cesium.createWorldTerrain(), // use the Cesium World Terrain from ion
+			terrain: Cesium.Terrain.fromWorldTerrain(),
 			animation: true,
 			timeline: true,
 			shouldAnimate: true,
@@ -244,16 +242,20 @@
 
 	/* Day/Night Initialise*/
 	var imageryLayers = viewer.scene.imageryLayers;
-	var blackMarble = viewer.imageryLayers.addImageryProvider(
-		new Cesium.IonImageryProvider({ assetId: 3812 })
+	var blackMarble = Cesium.ImageryLayer.fromProviderAsync(
+		Cesium.IonImageryProvider.fromAssetId(3812),
 	);
+	imageryLayers.add(blackMarble);
 
 	/* Create cloud layer */
 	var cloudPrimitive = createCloudPrimitive(viewer); //from cloudPrimitive.js
 
 	/* Create OsmBuildings */
-	var osmBuildings = viewer.scene.primitives.add(Cesium.createOsmBuildings());
-
+	var osmBuildings;
+	Cesium.createOsmBuildingsAsync().then(function(osm) {
+		osmBuildings = viewer.scene.primitives.add(osm);
+	});
+	
 	viewer.clock.onTick.addEventListener(function (clock) {
 		var camera = viewer.camera;
 		const cameraHeightMax = 25000000;

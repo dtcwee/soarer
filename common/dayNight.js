@@ -16,7 +16,7 @@ $("#cameraLongitude").text(debugDayNight ? (cameraLongitude * Cesium.Math.DEGREE
 var secondsOffset = cameraLongitude * 12 * 60 * 60 / Math.PI;
 var localJulianDate = new Cesium.JulianDate();
 Cesium.JulianDate.addSeconds(clock.currentTime, secondsOffset, localJulianDate);
-var localGregorianDate = new Cesium.JulianDate.toGregorianDate(localJulianDate);
+var localGregorianDate = Cesium.JulianDate.toGregorianDate(localJulianDate);
 $("#localTime").text(debugDayNight ? (localGregorianDate.hour + ":" + localGregorianDate.minute + ":" + localGregorianDate.second) : '');
 //Calculate Sun Declination
 var sunDeclination = Cesium.Math.clampToLatitudeRange(

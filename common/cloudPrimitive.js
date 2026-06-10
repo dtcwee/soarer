@@ -38,7 +38,7 @@ function createCloudPrimitive(viewer) {
                     vec2 uv = materialInput.st;
                     // scroll horizontally and wrap
                     uv.x = fract(uv.x + offset);
-                    vec4 color = texture2D(image, uv);
+                    vec4 color = texture(image, uv);
                     material.diffuse = color.rgb;
                     material.alpha = color.a * alpha;
                     return material;

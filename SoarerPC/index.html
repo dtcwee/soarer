@@ -12,17 +12,17 @@
 	<script type="text/javascript" src="./keyCodes.js"></script>
 	<script type="text/javascript" src="./cookie.js"></script>
 	<script type="text/javascript" src="./controller.js"></script>
-	<script src="https://cesium.com/downloads/cesiumjs/releases/1.76/Build/Cesium/Cesium.js"></script>
-	<script src="https://ajax.aspnetcdn.com/ajax/jQuery/jquery-3.2.1.min.js"></script>
-	<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+	<script src="https://cesium.com/downloads/cesiumjs/releases/1.142/Build/Cesium/Cesium.js"></script>
+	<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+	<script src="https://code.jquery.com/ui/1.14.2/jquery-ui.min.js"></script>
 	<script type="text/javascript" src="../common/accounts.js"></script>
 	<script type="text/javascript" src="../common/dayNight.js"></script>
 	<script type="text/javascript" src="../common/cloudPrimitive.js"></script>
 
 	<style>
 		@import url(https://fonts.googleapis.com/icon?family=Material+Icons);
-		@import url(https://code.jquery.com/ui/1.12.1/themes/dark-hive/jquery-ui.css);
-		@import url(https://cesium.com/downloads/cesiumjs/releases/1.76/Build/Cesium/Widgets/widgets.css);
+		@import url(https://code.jquery.com/ui/1.14.2/themes/dark-hive/jquery-ui.css);
+		@import url(https://cesium.com/downloads/cesiumjs/releases/1.142/Build/Cesium/Widgets/widgets.css);
 		@import url(./main.css);
 		@import url(./controller.css);
 		@import url(../common/loader.css);
@@ -193,13 +193,11 @@
 	Cesium.Camera.DEFAULT_VIEW_FACTOR = 0;
 
 	/*Initialise Keys and Tokens*/
-	//Cesium.BingMapsApi.defaultKey = globalBingMapsApiDefaultKey; //defined in accounts.js
 	Cesium.Ion.defaultAccessToken = globalCesiumIonDefaultAccessToken; //defined in accounts.js
 
 	try {
 		var viewer = new Cesium.Viewer('cesiumContainer', {
-			//imageryProvider: Cesium.createWorldImagery(), // use the Bing Maps Aerial imagery from ion (this is the default)
-			terrainProvider: Cesium.createWorldTerrain(), // use the Cesium World Terrain from ion
+			terrain: Cesium.Terrain.fromWorldTerrain(),
 			animation: true,
 			timeline: true,
 			shouldAnimate: true,
@@ -224,16 +222,20 @@
 
 	/* Day/Night Initialise*/
 	var imageryLayers = viewer.scene.imageryLayers;
-	var blackMarble = viewer.imageryLayers.addImageryProvider(
-		new Cesium.IonImageryProvider({ assetId: 3812 })
+	var blackMarble = Cesium.ImageryLayer.fromProviderAsync(
+		Cesium.IonImageryProvider.fromAssetId(3812),
 	);
+	imageryLayers.add(blackMarble);
 
 	/* Create cloud layer */
 	var cloudPrimitive = createCloudPrimitive(viewer); //from cloudPrimitive.js
 
 	/* Create OsmBuildings */
-	var osmBuildings = viewer.scene.primitives.add(Cesium.createOsmBuildings());
-
+	var osmBuildings;
+	Cesium.createOsmBuildingsAsync().then(function(osm) {
+		osmBuildings = viewer.scene.primitives.add(osm);
+	});
+	
 	var oldJulianDate = new Cesium.JulianDate();
 	var oldCameraPosition = viewer.camera.position;
 	//Clock Tick Loop Start	
