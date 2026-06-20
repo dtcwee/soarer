@@ -12,10 +12,10 @@
 </head>
 <body>
   <div id="cesiumContainer"></div>
-  <div id="hud">FPS: <span id="fps">—</span> · Altitude: <span id="camAlt">—</span> · Distance to region: <span id="avgDist">—</span> km · Clouds: <span id="cloudCount">0</span>
+  <div id="hud">FPS: <span id="fps">—</span> · Altitude: <span id="camAlt">—</span> · Distance to region: <span id="avgDist">—</span> km · Clouds: <span id="cloudCount">0</span> · Generated: <span id="cloudsGenerated">0</span>
     <br>
     Region radius fraction: <input id="regionFrac" type="range" min="0.1" max="1" step="0.05" value="0.6"> <span id="regionFracVal">0.6</span>
-    &nbsp; Max clouds: <input id="maxCloudsInput" type="number" min="0" step="1" value="2000" style="width:80px"> 
+    &nbsp; Cloud density (per km²): <input id="cloudDensityInput" type="number" min="0" max="5" step="0.01" value="0.20" style="width:80px"> 
     &nbsp; <button id="regenBtn">Regenerate</button>
   </div>
 
@@ -44,14 +44,14 @@
       osmBuildings = viewer.scene.primitives.add(osm);
     });
     // LOD helper: maps camera altitude (m) to [0..1] blend weight for LOD
-    function altitudeToLOD(altitudeMeters) {
-      // 0 @ 3km, 1 @ 10km
-      var a = (altitudeMeters - 3000) / (10000 - 3000);
+    function altitudeToAlpha(altitudeMeters) {
+      // 0 @ 3km, 1 @ 4km
+      var a = (altitudeMeters - 3000) / (4000 - 3000);
       return Math.max(0, Math.min(1, a));
     }
     // expose hook globally and on viewer for other modules
-    window.altitudeToLOD = altitudeToLOD;
-    viewer.altitudeToLOD = altitudeToLOD;
+    window.altitudeToAlpha = altitudeToAlpha;
+    viewer.altitudeToAlpha = altitudeToAlpha;
 
     // Calculate distance to horizon for given camera altitude and globe radius, used for culling and LOD decisions
     function distanceToHorizon(altitudeMeters, globeRadiusMeters) {
@@ -76,7 +76,7 @@
       options = options || {};
       this.viewer = viewer;
       this.maxClouds = options.maxClouds || 5000; // max clouds to manage
-      this.minAltitude = options.minAltitude || 500; // cloud altitude min
+      this.minAltitude = options.minAltitude || 1000; // cloud altitude min
       this.maxAltitude = options.maxAltitude || 2000; // cloud altitude max
       this.spawnWhenBelow = options.spawnWhenBelow || 5000; // camera altitude threshold to spawn (5km)
       // create a CloudCollection to hold individual cloud primitives
@@ -84,14 +84,22 @@
       this.viewer.scene.primitives.add(this.collection);
 
       this.clouds = [];
-      this.reuseCount = 0;
       this._lastCameraPos = Cesium.Cartesian3.clone(viewer.camera.position);
       // region fraction of horizon distance to generate clouds within [0.1..1.0]
       this.regionFraction = options.regionFraction || 0.6;
       this._updateFrameCounter = 0;
+        this.cloudDensity = options.cloudDensity || 0.2; // clouds per km^2
+        this.lastGeneratedCount = 0;
     }
 
     CloudManager.prototype.randomBetween = function(a,b) { return a + Math.random() * (b-a); };
+
+    CloudManager.prototype.spawningAreaKm2 = function() {
+      // approximate spawning area as a circle on a plane: area = pi * r^2
+      if (!this.regionDrawDist || this.regionDrawDist <= 0) return 0.0;
+      var rKm = this.regionDrawDist / 1000.0;
+      return Math.PI * rKm * rKm;
+    };
 
     CloudManager.prototype.spawnInView = function() {
       // Check camera altitude and regenerate region when needed.
@@ -103,7 +111,7 @@
           try { if (this.collection && typeof this.collection.removeAll === 'function') this.collection.removeAll(); } catch (e) {}
           this.regionCenterPos = null;
           this.regionCenterCarto = null;
-          this.regionDth = 0;
+          this.regionDrawDist = 0;
           this.clouds = [];
         }
         return;
@@ -114,7 +122,7 @@
         this._regenerateRegion(horizonDist);
       } else {
         var moved = Cesium.Cartesian3.distance(this.regionCenterPos, this.viewer.camera.position);
-        if (moved > (this.regionDth * 0.5)) {
+        if (moved > (this.regionDrawDist * 0.5)) {
           this._regenerateRegion(horizonDist);
         }
       }
@@ -127,7 +135,7 @@
       this.regionCenterPos = camPos;
       this.regionCenterCarto = camCarto;
       // region radius is a fraction of the horizon distance
-      this.regionDth = horizonDist * (this.regionFraction || 1.0);
+      this.regionDrawDist = horizonDist * (this.regionFraction || 1.0);
 
       // remove existing primitives immediately and clear tracking
       try {
@@ -139,8 +147,11 @@
       }
       this.clouds = [];
 
-      // decide how many clouds to create for the region
-      var count = Math.max(0, Math.min(this.maxClouds, this.maxClouds));
+      // decide how many clouds to create for the region using density * area
+      var areaKm2 = this.spawningAreaKm2();
+      var density = (typeof this.cloudDensity === 'number') ? this.cloudDensity : 0.2;
+      var count = Math.max(0, Math.round(areaKm2 * density));
+      this.lastGeneratedCount = count;
 
       // precompute meters-per-degree conversions
       var metersPerDegLat = 111319.9;
@@ -149,7 +160,7 @@
 
       for (var i = 0; i < count; i++) {
         // random distance up to regionDth, and random bearing
-        var r = Math.random() * this.regionDth;
+        var r = Math.random() * this.regionDrawDist;
         var theta = Math.random() * 2.0 * Math.PI;
         var dx = r * Math.cos(theta); // east meters
         var dy = r * Math.sin(theta); // north meters
@@ -194,6 +205,8 @@
         document.getElementById('avgDist').textContent = '—';
       }
       document.getElementById('cloudCount').textContent = this.clouds.length;
+      var genEl = document.getElementById('cloudsGenerated');
+      if (genEl) genEl.textContent = this.lastGeneratedCount || 0;
     };
 
     // instantiate manager
@@ -211,8 +224,8 @@
       // update static cloud primitive alpha based on camera altitude
       var carto = Cesium.Cartographic.fromCartesian(viewer.camera.position);
       var h = carto.height;
-      // alpha = 0 @ 3km, 1 @ 10km
-      var alpha = altitudeToLOD(h);
+      // alpha = 0 @ 3km, 1 @ 4km
+      var alpha = altitudeToAlpha(h);
       try {
         if (cloudPrimitive && cloudPrimitive._cloudMaterial) {
           cloudPrimitive._cloudMaterial.uniforms.alpha = alpha;
@@ -240,12 +253,12 @@
         });
       }
 
-      var maxInput = document.getElementById('maxCloudsInput');
-      if (maxInput) {
-        maxInput.value = cloudManager.maxClouds;
-        maxInput.addEventListener('change', function() {
-          var v = parseInt(this.value, 10) || 0;
-          cloudManager.maxClouds = v;
+      var densityInput = document.getElementById('cloudDensityInput');
+      if (densityInput) {
+        densityInput.value = cloudManager.cloudDensity || 0.2;
+        densityInput.addEventListener('change', function() {
+          var v = parseFloat(this.value) || 0.0;
+          cloudManager.cloudDensity = Math.max(0, Math.min(5, v));
         });
       }
 
