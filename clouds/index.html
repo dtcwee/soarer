@@ -22,6 +22,7 @@
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.142/Build/Cesium/Cesium.js"></script>
   <script src="../common/accounts.js"></script>
   <script src="../common/cloudPrimitive.js"></script>
+  <script src="cloudPrimitiveAlpha.js"></script>
 
   <script>
     // Basic Cesium viewer scaffold
@@ -39,19 +40,10 @@
     var cloudPrimitive = createCloudPrimitive(viewer);
 
     /* Create OsmBuildings */
-    var osmBuildings;
     Cesium.createOsmBuildingsAsync().then(function (osm) {
-      osmBuildings = viewer.scene.primitives.add(osm);
+      viewer.scene.primitives.add(osm);
     });
-    // LOD helper: maps camera altitude (m) to [0..1] blend weight for LOD
-    function altitudeToAlpha(altitudeMeters) {
-      // 0 @ 3km, 1 @ 4km
-      var a = (altitudeMeters - 3000) / (4000 - 3000);
-      return Math.max(0, Math.min(1, a));
-    }
-    // expose hook globally and on viewer for other modules
-    window.altitudeToAlpha = altitudeToAlpha;
-    viewer.altitudeToAlpha = altitudeToAlpha;
+    // LOD helper kept in separate module: clouds/cloudPrimitiveAlpha.js
 
     // Calculate distance to horizon for given camera altitude and globe radius, used for culling and LOD decisions
     function distanceToHorizon(altitudeMeters, globeRadiusMeters) {
@@ -221,18 +213,7 @@
       _lastFrameTime = nowPerf;
       var fps = dt > 0 ? 1000.0 / dt : 60.0;
       document.getElementById('fps').textContent = Math.round(fps);
-      // update static cloud primitive alpha based on camera altitude
-      var carto = Cesium.Cartographic.fromCartesian(viewer.camera.position);
-      var h = carto.height;
-      // alpha = 0 @ 3km, 1 @ 4km
-      var alpha = altitudeToAlpha(h);
-      try {
-        if (cloudPrimitive && cloudPrimitive._cloudMaterial) {
-          cloudPrimitive._cloudMaterial.uniforms.alpha = alpha;
-        }
-      } catch (e) {
-        // ignore
-      }
+      // static cloud primitive alpha update moved to clouds/cloudPrimitiveAlpha.js
 
       // spawn and update manager
       cloudManager.spawnInView();
