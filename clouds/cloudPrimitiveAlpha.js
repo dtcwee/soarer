@@ -3,8 +3,8 @@
   if (typeof viewer === 'undefined') return;
 
   function altitudeToAlpha(altitudeMeters) {
-    // 0 @ 3km, 1 @ 4km
-    var a = (altitudeMeters - 3000) / (4000 - 3000);
+    // 0 @ 5km, 1 @ 10km
+    var a = (altitudeMeters - 5000) / (10000 - 5000);
     return Math.max(0, Math.min(1, a));
   }
 
