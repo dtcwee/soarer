@@ -14,8 +14,7 @@
   <div id="cesiumContainer"></div>
   <div id="hud">FPS: <span id="fps">—</span> · Altitude: <span id="camAlt">—</span> · Chunk: <span id="chunkCoords">—</span> · Clouds: <span id="cloudCount">0</span> · Active chunks: <span id="activeChunks">0</span>
     <br>
-    Cloud density (per km²): <input id="cloudDensityInput" type="number" min="0" max="5" step="0.01" value="0.20" style="width:80px"> 
-    &nbsp; <button id="regenBtn">Regenerate Current Chunk</button>
+    Cloud density (per km²): <input id="cloudDensityInput" type="number" min="0" max="5" step="0.01" value="0.20" style="width:80px">
   </div>
 
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.142/Build/Cesium/Cesium.js"></script>
@@ -43,14 +42,6 @@
       viewer.scene.primitives.add(osm);
     });
     // LOD helper kept in separate module: clouds/cloudPrimitiveAlpha.js
-
-    // Calculate distance to horizon for given camera altitude and globe radius, used for culling and LOD decisions
-    function distanceToHorizon(altitudeMeters, globeRadiusMeters) {
-      return Math.sqrt(2 * globeRadiusMeters * altitudeMeters + altitudeMeters * altitudeMeters);
-    }
-    // expose hook globally and on viewer for other modules
-    window.distanceToHorizon = distanceToHorizon;
-    viewer.distanceToHorizon = distanceToHorizon;
 
     viewer.scene.camera.flyTo({
       destination: new Cesium.Cartesian3(-3924310.499373415, 3458540.929411598, -3639678.444890832),
@@ -273,15 +264,6 @@
       document.getElementById('activeChunks').textContent = this.chunks.size;
     };
 
-    CloudGridManager.prototype.regenerateCurrentChunk = function() {
-      if (this.currentChunkX === null || this.currentChunkY === null) {
-        return;
-      }
-      var keyStr = this.chunkKeyString(this.currentChunkX, this.currentChunkY);
-      this._destroyChunk(keyStr);
-      this._createChunk(keyStr);
-    };
-
     // instantiate grid manager
     var cloudGridManager = new CloudGridManager(viewer, { 
       chunkSize: 20000,
@@ -313,13 +295,6 @@
         densityInput.addEventListener('change', function() {
           var v = parseFloat(this.value) || 0.0;
           cloudGridManager.cloudDensity = Math.max(0, Math.min(5, v));
-        });
-      }
-
-      var regen = document.getElementById('regenBtn');
-      if (regen) {
-        regen.addEventListener('click', function() {
-          cloudGridManager.regenerateCurrentChunk();
         });
       }
     })();
