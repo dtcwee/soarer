@@ -87,6 +87,9 @@
       
       // Map to store active chunks: key = "chunkX,chunkY", value = CloudCollection
       this.chunks = new Map();
+      // Pool of inactive CloudCollections that can be recycled for new chunks
+      this.inactivePool = [];
+      this.maxPoolSize = typeof options.maxPoolSize === 'number' ? options.maxPoolSize : 9;
       
       // Track current chunk position
       this.currentChunkX = null;
@@ -136,11 +139,11 @@
         }
       }
       
-      // Remove chunks that are no longer in the 3x3 grid
+      // Remove chunks that are no longer in the 3x3 grid and recycle their collections
       var self = this;
       this.chunks.forEach(function(collection, key) {
         if (!newChunkSet.has(key)) {
-          self._destroyChunk(key);
+          self._recycleChunk(key);
         }
       });
       
@@ -157,9 +160,12 @@
       var chunkX = parseInt(coords[0], 10);
       var chunkY = parseInt(coords[1], 10);
       
-      // Create a new CloudCollection for this chunk
-      var cloudCollection = new Cesium.CloudCollection();
-      this.viewer.scene.primitives.add(cloudCollection);
+      // Reuse an inactive collection if available, otherwise create a new one
+      var cloudCollection = this.inactivePool.pop();
+      if (!cloudCollection) {
+        cloudCollection = new Cesium.CloudCollection();
+        this.viewer.scene.primitives.add(cloudCollection);
+      }
       this.chunks.set(chunkKeyStr, cloudCollection);
       
       // Populate the chunk with deterministic clouds
@@ -226,20 +232,21 @@
       }
     };
 
-    CloudGridManager.prototype._destroyChunk = function(chunkKeyStr) {
+    CloudGridManager.prototype._recycleChunk = function(chunkKeyStr) {
       var collection = this.chunks.get(chunkKeyStr);
       if (collection) {
         try {
-          // Remove all clouds from the collection
+          // Clear the collection so it can be reused later
           if (typeof collection.removeAll === 'function') {
             collection.removeAll();
           }
-          // Remove the collection primitive from the scene
-          this.viewer.scene.primitives.remove(collection);
         } catch (e) {
-          // ignore destruction errors
+          // ignore recycle errors
         }
         this.chunks.delete(chunkKeyStr);
+        if (this.inactivePool.length < this.maxPoolSize) {
+          this.inactivePool.push(collection);
+        }
       }
     };
 
