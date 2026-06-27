@@ -16,12 +16,10 @@
     <br>
     Cloud density (per km²): <input id="cloudDensityInput" type="number" min="0" max="5" step="0.01" value="0.20" style="width:80px">
   </div>
-
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.142/Build/Cesium/Cesium.js"></script>
   <script src="../common/accounts.js"></script>
   <script src="../common/cloudPrimitive.js"></script>
-  <script src="./cloudPrimitiveAlpha.js"></script>
-
+<!-- cloudPrimitive alpha include at end of file-->
   <script>
     // Basic Cesium viewer scaffold
     Cesium.Ion.defaultAccessToken = typeof globalCesiumIonDefaultAccessToken !== 'undefined' ? globalCesiumIonDefaultAccessToken : '';
@@ -308,5 +306,7 @@
 
 
   </script>
+
+  <script src="./cloudPrimitiveAlpha.js"></script>
 </body>
 </html>

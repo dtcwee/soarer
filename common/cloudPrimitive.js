@@ -3,7 +3,7 @@
 // variables: cloudAltitude (meters), cloudSpeed (arbitrary speed multiplier)
 
 // Cloud configuration
-var cloudAltitude = 5000; // meters
+var cloudAltitude = 10000; // meters
 var cloudSpeed = 5;
 var texturePath = '../common/cloud_combined_2048.png';
 
