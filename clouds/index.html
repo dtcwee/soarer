@@ -79,6 +79,7 @@
       this.cloudDensity = typeof options.cloudDensity === 'number' ? options.cloudDensity : 0.2; // clouds per km²
       this.minAltitude = typeof options.minAltitude === 'number' ? options.minAltitude : 1000;
       this.maxAltitude = typeof options.maxAltitude === 'number' ? options.maxAltitude : 2000;
+      this.drawAltitude = typeof options.drawAltitude === 'number' ? options.drawAltitude : 25000; // draw clouds at 25 km 
       this.scaleRange = options.scaleRange || { x: [1200, 1800], y: [200, 400] };
       this.sizeRange = options.sizeRange || { x: [40, 60], y: [8, 16], z: [10, 20] };
       
@@ -98,6 +99,9 @@
       // Set up camera change listener with low percentage threshold for smooth grid updates
       this.viewer.camera.percentageChanged = 0.01; // 1% camera change triggers event
       this.viewer.camera.changed.addEventListener(this._onCameraChanged.bind(this));
+
+      // Initialize clouds once on startup if the camera begins below the draw threshold.
+      this._onCameraChanged();
     }
 
     CloudGridManager.prototype.getChunkCoords = function(cartesian3Position) {
@@ -122,11 +126,45 @@
       return seededRandomBetween(seedX, seedY, sequenceIndex, min, max);
     };
 
+    CloudGridManager.prototype._recycleAllChunks = function() {
+      var self = this;
+      Array.from(this.chunks.keys()).forEach(function(key) {
+        var collection = self.chunks.get(key);
+        if (collection) {
+          try {
+            if (typeof collection.removeAll === 'function') {
+              collection.removeAll();
+            }
+          } catch (e) {
+            // ignore recycle errors
+          }
+          if (self.inactivePool.length < self.maxPoolSize) {
+            self.inactivePool.push(collection);
+          }
+        }
+        self.chunks.delete(key);
+      });
+      this.chunks.clear();
+    };
+
     CloudGridManager.prototype._onCameraChanged = function() {
+      var cameraHeight = this.viewer.camera.positionCartographic && this.viewer.camera.positionCartographic.height != null
+        ? this.viewer.camera.positionCartographic.height
+        : Cesium.Cartographic.fromCartesian(this.viewer.camera.position).height;
+
+      if (cameraHeight > this.drawAltitude) {
+        if (this.chunks.size > 0) {
+          this._recycleAllChunks();
+        }
+        this.currentChunkX = null;
+        this.currentChunkY = null;
+        return;
+      }
+
       var camChunk = this.getChunkCoords(this.viewer.camera.position);
       
       // Only update grid if we've moved to a different chunk
-      if (camChunk.x === this.currentChunkX && camChunk.y === this.currentChunkY) {
+      if (camChunk.x === this.currentChunkX && camChunk.y === this.currentChunkY && this.chunks.size > 0) {
         return;
       }
       
