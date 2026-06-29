@@ -18,8 +18,9 @@
       var carto = Cesium.Cartographic.fromCartesian(viewer.camera.position);
       var h = carto.height;
       var alpha = altitudeToAlpha(h);
-      if (typeof cloudPrimitive !== 'undefined' && cloudPrimitive && cloudPrimitive._cloudMaterial) {
-        cloudPrimitive._cloudMaterial.uniforms.alpha = alpha;
+      var activeCloudPrimitive = window.cloudPrimitive || cloudPrimitive;
+      if (activeCloudPrimitive && activeCloudPrimitive._cloudMaterial) {
+        activeCloudPrimitive._cloudMaterial.uniforms.alpha = alpha;
       }
     } catch (e) {
       // ignore errors to avoid interfering with main loop

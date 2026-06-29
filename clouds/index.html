@@ -33,7 +33,7 @@
     });
 
     // add the static GPU-scrolling cloud primitive from common/cloudPrimitive.js
-    var cloudPrimitive = createCloudPrimitive(viewer);
+    window.cloudPrimitive = createCloudPrimitive(viewer);
 
     /* Create OsmBuildings */
     Cesium.createOsmBuildingsAsync().then(function (osm) {
@@ -75,10 +75,12 @@
       this.viewer = viewer;
       
       // Grid configuration
-      this.CHUNK_SIZE_METERS = options.chunkSize || 20000; // 20 km chunks
-      this.cloudDensity = options.cloudDensity || 0.2; // clouds per km²
-      this.minAltitude = options.minAltitude || 1000;
-      this.maxAltitude = options.maxAltitude || 2000;
+      this.CHUNK_SIZE_METERS = typeof options.chunkSize === 'number' ? options.chunkSize : 20000; // 20 km chunks
+      this.cloudDensity = typeof options.cloudDensity === 'number' ? options.cloudDensity : 0.2; // clouds per km²
+      this.minAltitude = typeof options.minAltitude === 'number' ? options.minAltitude : 1000;
+      this.maxAltitude = typeof options.maxAltitude === 'number' ? options.maxAltitude : 2000;
+      this.scaleRange = options.scaleRange || { x: [1200, 1800], y: [200, 400] };
+      this.sizeRange = options.sizeRange || { x: [40, 60], y: [8, 16], z: [10, 20] };
       
       // Web Mercator projection for uniform grid calculations
       this.mercatorProj = new Cesium.WebMercatorProjection();
@@ -95,9 +97,7 @@
       
       // Set up camera change listener with low percentage threshold for smooth grid updates
       this.viewer.camera.percentageChanged = 0.01; // 1% camera change triggers event
-      this.cameraChangedSubscription = this.viewer.camera.changed.addEventListener(
-        this._onCameraChanged.bind(this)
-      );
+      this.viewer.camera.changed.addEventListener(this._onCameraChanged.bind(this));
     }
 
     CloudGridManager.prototype.getChunkCoords = function(cartesian3Position) {
@@ -114,6 +114,12 @@
 
     CloudGridManager.prototype.chunkKeyString = function(x, y) {
       return x + ',' + y;
+    };
+
+    CloudGridManager.prototype._getRandomInRange = function(range, seedX, seedY, sequenceIndex) {
+      var min = Array.isArray(range) ? range[0] : (range && range.min != null ? range.min : 0);
+      var max = Array.isArray(range) ? range[1] : (range && range.max != null ? range.max : 0);
+      return seededRandomBetween(seedX, seedY, sequenceIndex, min, max);
     };
 
     CloudGridManager.prototype._onCameraChanged = function() {
@@ -167,10 +173,10 @@
       this.chunks.set(chunkKeyStr, cloudCollection);
       
       // Populate the chunk with deterministic clouds
-      this._populateChunk(chunkKeyStr, chunkX, chunkY, cloudCollection);
+      this._populateChunk(chunkX, chunkY, cloudCollection);
     };
 
-    CloudGridManager.prototype._populateChunk = function(chunkKeyStr, chunkX, chunkY, cloudCollection) {
+    CloudGridManager.prototype._populateChunk = function(chunkX, chunkY, cloudCollection) {
       // Convert chunk grid coords back to cartographic bounds
       var mercatorProj = this.mercatorProj;
       
@@ -208,11 +214,11 @@
         var chunkLon = Cesium.Math.lerp(minCarto.longitude, maxCarto.longitude, fracX);
         var chunkLat = Cesium.Math.lerp(minCarto.latitude, maxCarto.latitude, fracY);
         
-        var scale_x = seededRandomBetween(chunkX, chunkY, i * 3 + 100, 1200.0, 1800.0);
-        var scale_y = seededRandomBetween(chunkX, chunkY, i * 3 + 101, 200.0, 400.0);
-        var max_x = seededRandomBetween(chunkX, chunkY, i * 3 + 102, 40.0, 60.0);
-        var max_y = seededRandomBetween(chunkX, chunkY, i * 3 + 103, 8.0, 16.0);
-        var max_z = seededRandomBetween(chunkX, chunkY, i * 3 + 104, 10.0, 20.0);
+        var scale_x = this._getRandomInRange(this.scaleRange.x, chunkX, chunkY, i * 3 + 100);
+        var scale_y = this._getRandomInRange(this.scaleRange.y, chunkX, chunkY, i * 3 + 101);
+        var max_x = this._getRandomInRange(this.sizeRange.x, chunkX, chunkY, i * 3 + 102);
+        var max_y = this._getRandomInRange(this.sizeRange.y, chunkX, chunkY, i * 3 + 103);
+        var max_z = this._getRandomInRange(this.sizeRange.z, chunkX, chunkY, i * 3 + 104);
         
         try {
           cloudCollection.add({
@@ -270,25 +276,25 @@
     };
 
     // instantiate grid manager
-    var cloudGridManager = new CloudGridManager(viewer, { 
+    var cloudGridManager = new CloudGridManager(viewer, {
       chunkSize: 20000,
       cloudDensity: 0.2,
       minAltitude: 1000,
-      maxAltitude: 2000
+      maxAltitude: 2000,
+      scaleRange: { x: [1200, 1800], y: [200, 400] },
+      sizeRange: { x: [40, 60], y: [8, 16], z: [10, 20] }
     });
 
     // simple FPS tracker
     var _lastFrameTime = performance.now();
     // Pre-render loop: update HUD and grid manager
-    viewer.scene.preRender.addEventListener(function(scene, time) {
+    viewer.scene.preRender.addEventListener(function() {
       var nowPerf = performance.now();
       var dt = nowPerf - _lastFrameTime;
       _lastFrameTime = nowPerf;
       var fps = dt > 0 ? 1000.0 / dt : 60.0;
       document.getElementById('fps').textContent = Math.round(fps);
-      // static cloud primitive alpha update moved to clouds/cloudPrimitiveAlpha.js
 
-      // update grid manager HUD
       cloudGridManager.update();
     });
 
